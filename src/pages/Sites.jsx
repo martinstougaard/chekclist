@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as api from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
-import { buildTree, siteStats } from '../lib/progress';
+import { buildTree, siteStats, withSiteTasks } from '../lib/progress';
 import { daysUntil, formatDate } from '../lib/format';
 import ProgressBar from '../components/ProgressBar';
 import Modal from '../components/Modal';
@@ -29,6 +29,7 @@ export default function Sites() {
   const [sites, setSites] = useState(null);
   const [structure, setStructure] = useState(null);
   const [progress, setProgress] = useState([]);
+  const [siteTasks, setSiteTasks] = useState([]);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('deadline');
@@ -36,10 +37,16 @@ export default function Sites() {
 
   const load = useCallback(async () => {
     try {
-      const [s, st, p] = await Promise.all([api.loadSites(), api.loadStructure(), api.loadProgress()]);
+      const [s, st, p, x] = await Promise.all([
+        api.loadSites(),
+        api.loadStructure(),
+        api.loadProgress(),
+        api.loadAllSiteTasks(),
+      ]);
       setSites(s);
       setStructure(st);
       setProgress(p);
+      setSiteTasks(x);
     } catch (e) {
       toast.error(e);
       setSites((cur) => cur || []);
@@ -61,9 +68,17 @@ export default function Sites() {
       if (!bySite.has(r.site_id)) bySite.set(r.site_id, []);
       bySite.get(r.site_id).push(r);
     }
+    const extrasBySite = new Map();
+    for (const t of siteTasks) {
+      if (!extrasBySite.has(t.site_id)) extrasBySite.set(t.site_id, []);
+      extrasBySite.get(t.site_id).push(t);
+    }
     const q = search.trim().toLowerCase();
     const list = sites
-      .map((site) => ({ site, stats: siteStats(tree, bySite.get(site.id) || []) }))
+      .map((site) => ({
+        site,
+        stats: siteStats(withSiteTasks(tree, extrasBySite.get(site.id) || []), bySite.get(site.id) || []),
+      }))
       .filter(({ site, stats }) => {
         if (q && !site.name.toLowerCase().includes(q) && !(nameOf(site.responsible_id) || '').toLowerCase().includes(q)) return false;
         if (hideDone && stats.total.total > 0 && stats.total.pct === 100) return false;
@@ -76,7 +91,7 @@ export default function Sites() {
       progress: (a, b) => a.stats.total.pct - b.stats.total.pct,
     }[sort];
     return list.sort(cmp);
-  }, [sites, structure, progress, search, sort, hideDone, nameOf]);
+  }, [sites, structure, progress, siteTasks, search, sort, hideDone, nameOf]);
 
   const create = async (values) => {
     try {

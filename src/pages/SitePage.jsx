@@ -7,6 +7,7 @@ import { useToast } from '../lib/toast';
 import {
   ENVS,
   ENV_LABEL,
+  appliesTo,
   buildTree,
   finish,
   indexProgress,
@@ -16,6 +17,7 @@ import {
   stepKey,
   taskState,
   taskSteps,
+  withSiteTasks,
 } from '../lib/progress';
 import { daysUntil, formatDate } from '../lib/format';
 import ProgressBar from '../components/ProgressBar';
@@ -52,7 +54,7 @@ function StatusControl({ state, derived, onDone, onNa, label }) {
 }
 
 /** Én række i tjeklisten (opgave eller underopgave). */
-function Row({ title, description, state, derived, counter, commentCount, onDone, onNa, renderComments, sub }) {
+function Row({ title, description, state, derived, counter, commentCount, onDone, onNa, renderComments, renderEdit, sub }) {
   const [panel, setPanel] = useState(null); // 'info' | 'comments' | null
   const toggle = (name) => setPanel((p) => (p === name ? null : name));
   return (
@@ -66,13 +68,104 @@ function Row({ title, description, state, derived, counter, commentCount, onDone
             ⓘ
           </button>
         )}
+        {renderEdit && (
+          <button type="button" className={`icon-btn${panel === 'edit' ? ' on' : ''}`} onClick={() => toggle('edit')} title="Rediger opgaven" aria-expanded={panel === 'edit'}>
+            ✎
+          </button>
+        )}
         <button type="button" className={`icon-btn${panel === 'comments' ? ' on' : ''}`} onClick={() => toggle('comments')} title="Kommentarer" aria-expanded={panel === 'comments'}>
           💬{commentCount > 0 && <span className="icon-count">{commentCount}</span>}
         </button>
       </div>
       {panel === 'info' && <div className="row-panel description"><Linkified text={description} /></div>}
       {panel === 'comments' && <div className="row-panel">{renderComments()}</div>}
+      {panel === 'edit' && renderEdit && <div className="row-panel">{renderEdit(() => setPanel(null))}</div>}
     </div>
+  );
+}
+
+const ENV_CHOICES = [
+  ['both', 'Test og produktion'],
+  ['test', 'Kun test'],
+  ['prod', 'Kun produktion'],
+];
+
+/** Redigering af en ekstra opgave: titel, vejledning, hvor den gælder, og sletning. */
+function SiteTaskEditor({ task, onSave, onDelete, onClose }) {
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description);
+  const [environments, setEnvironments] = useState(task.environments);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setBusy(true);
+    const ok = await onSave({ title: title.trim(), description: description.trim(), environments });
+    setBusy(false);
+    if (ok) onClose();
+  };
+
+  return (
+    <form className="form site-task-editor" onSubmit={submit}>
+      <label>
+        Opgave
+        <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+      </label>
+      <label>
+        Vejledning (valgfri)
+        <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Trin, tips og links. Vises ved ⓘ." />
+      </label>
+      <label>
+        Gælder i
+        <select value={environments} onChange={(e) => setEnvironments(e.target.value)}>
+          {ENV_CHOICES.map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+      </label>
+      <div className="form-actions">
+        <button type="button" className="btn btn-danger btn-sm" onClick={onDelete}>Slet opgave</button>
+        <span className="spacer" />
+        <button type="button" className="btn btn-sm" onClick={onClose}>Annullér</button>
+        <button className="btn btn-primary btn-sm" disabled={busy || !title.trim()}>Gem</button>
+      </div>
+    </form>
+  );
+}
+
+/** Boksen nederst, hvor man tilføjer en opgave, der kun gælder dette site. */
+function AddSiteTask({ siteName, onAdd }) {
+  const [title, setTitle] = useState('');
+  const [environments, setEnvironments] = useState('both');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const text = title.trim();
+    if (!text || busy) return;
+    setBusy(true);
+    const ok = await onAdd({ title: text, environments });
+    setBusy(false);
+    if (ok) setTitle('');
+  };
+
+  return (
+    <form className="card add-site-task" onSubmit={submit}>
+      <h3>Tilføj ekstra opgave til {siteName}</h3>
+      <p className="muted small">
+        Gælder kun dette site, fx noget sitet selv har bedt om. Alle kan tilføje, rette og slette ekstra opgaver.
+      </p>
+      <div className="add-site-task-row">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Hvad skal gøres?" aria-label="Ny ekstra opgave" />
+        <select value={environments} onChange={(e) => setEnvironments(e.target.value)} aria-label="Hvor gælder opgaven">
+          {ENV_CHOICES.map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <button className="btn btn-primary" disabled={busy || !title.trim()}>Tilføj opgave</button>
+      </div>
+    </form>
   );
 }
 
@@ -90,21 +183,24 @@ export default function SitePage() {
   const [structure, setStructure] = useState(null);
   const [rows, setRows] = useState([]);
   const [comments, setComments] = useState([]);
+  const [siteTasks, setSiteTasks] = useState([]);
   const [hideDone, setHideDone] = useState(false);
   const [editing, setEditing] = useState(false);
 
   const loadAll = useCallback(
     async (withStructure = true) => {
       try {
-        const [s, p, c, st] = await Promise.all([
+        const [s, p, c, x, st] = await Promise.all([
           api.loadSite(id),
           api.loadProgress(id),
           api.loadComments(id),
+          api.loadSiteTasks(id),
           withStructure ? api.loadStructure() : null,
         ]);
         setSite(s);
         setRows(p);
         setComments(c);
+        setSiteTasks(x);
         if (st) setStructure(st);
       } catch (e) {
         toast.error(e);
@@ -131,6 +227,7 @@ export default function SitePage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'site_progress' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'site_tasks' }, refresh)
       .subscribe();
     const onVisible = () => document.visibilityState === 'visible' && loadAll(true);
     document.addEventListener('visibilitychange', onVisible);
@@ -141,28 +238,47 @@ export default function SitePage() {
     };
   }, [id, loadAll]);
 
-  const tree = useMemo(() => (structure ? buildTree(structure) : []), [structure]);
+  const tree = useMemo(
+    () => withSiteTasks(structure ? buildTree(structure) : [], siteTasks),
+    [structure, siteTasks]
+  );
   const index = useMemo(() => indexProgress(rows), [rows]);
   const stats = useMemo(() => siteStats(tree, rows), [tree, rows]);
 
   const commentCounts = useMemo(() => {
     const map = new Map();
     for (const c of comments) {
-      const key = c.subtask_id ? `s:${c.subtask_id}` : c.task_id ? `t:${c.task_id}` : null;
+      const key = c.subtask_id
+        ? `s:${c.subtask_id}`
+        : c.site_task_id
+          ? `x:${c.site_task_id}`
+          : c.task_id
+            ? `t:${c.task_id}`
+            : null;
       if (key) map.set(key, (map.get(key) || 0) + 1);
     }
     return map;
   }, [comments]);
 
-  const commentsFor = (taskId, subtaskId) =>
-    comments.filter((c) => (c.task_id || null) === (taskId || null) && (c.subtask_id || null) === (subtaskId || null));
+  const commentsFor = (taskId, subtaskId, siteTaskId = null) =>
+    comments.filter(
+      (c) =>
+        (c.task_id || null) === (taskId || null) &&
+        (c.subtask_id || null) === (subtaskId || null) &&
+        (c.site_task_id || null) === (siteTaskId || null)
+    );
 
   // ----- Handlinger -----
 
   /** steps: [{kind,id}], status: 'done' | 'na' | null */
   const setStatus = async (env, steps, status) => {
     if (steps.length === 0) return;
-    const keyOf = (r) => (r.task_id ? stepKey(r.environment, 't', r.task_id) : stepKey(r.environment, 's', r.subtask_id));
+    const keyOf = (r) =>
+      r.task_id
+        ? stepKey(r.environment, 't', r.task_id)
+        : r.site_task_id
+          ? stepKey(r.environment, 'x', r.site_task_id)
+          : stepKey(r.environment, 's', r.subtask_id);
     const keys = new Set(steps.map((s) => stepKey(env, s.kind, s.id)));
     const previous = rows;
     setRows((cur) => {
@@ -175,6 +291,7 @@ export default function SitePage() {
           environment: env,
           task_id: s.kind === 't' ? s.id : null,
           subtask_id: s.kind === 's' ? s.id : null,
+          site_task_id: s.kind === 'x' ? s.id : null,
           status,
         })),
       ];
@@ -187,13 +304,14 @@ export default function SitePage() {
     }
   };
 
-  const addComment = async (body, { taskId = null, subtaskId = null, env = null }) => {
+  const addComment = async (body, { taskId = null, subtaskId = null, siteTaskId = null, env = null }) => {
     try {
       const created = await api.addComment({
         site_id: id,
         environment: env,
         task_id: taskId,
         subtask_id: subtaskId,
+        site_task_id: siteTaskId,
         author_id: user.id,
         body,
       });
@@ -210,6 +328,48 @@ export default function SitePage() {
       setComments((cur) => cur.filter((c) => c.id !== commentId));
     } catch (e) {
       toast.error(e);
+    }
+  };
+
+  /** Returnerer true, hvis det lykkedes (så formularen kan lukke/nulstille). */
+  const addSiteTask = async ({ title, environments }) => {
+    try {
+      const position = siteTasks.reduce((max, t) => Math.max(max, t.position), 0) + 1;
+      const created = await api.createSiteTask({
+        site_id: id,
+        title,
+        environments,
+        position,
+        created_by: user.id,
+      });
+      setSiteTasks((cur) => [...cur, created]);
+      return true;
+    } catch (e) {
+      toast.error(`Kunne ikke tilføje opgaven: ${e.message}`);
+      return false;
+    }
+  };
+
+  const saveSiteTask = async (task, patch) => {
+    try {
+      await api.updateSiteTask(task.id, patch);
+      setSiteTasks((cur) => cur.map((t) => (t.id === task.id ? { ...t, ...patch } : t)));
+      return true;
+    } catch (e) {
+      toast.error(`Kunne ikke gemme opgaven: ${e.message}`);
+      return false;
+    }
+  };
+
+  const removeSiteTask = async (task) => {
+    if (!window.confirm(`Slet "${task.title}"? Afkrydsninger og kommentarer på opgaven bliver også slettet.`)) return;
+    try {
+      await api.deleteSiteTask(task.id);
+      setSiteTasks((cur) => cur.filter((t) => t.id !== task.id));
+      setRows((cur) => cur.filter((r) => r.site_task_id !== task.id));
+      setComments((cur) => cur.filter((c) => c.site_task_id !== task.id));
+    } catch (e) {
+      toast.error(`Kunne ikke slette opgaven: ${e.message}`);
     }
   };
 
@@ -255,6 +415,7 @@ export default function SitePage() {
     if (hideDone && (state === 'done' || state === 'na')) return null;
 
     const hasSubs = task.subtasks.length > 0;
+    const isExtra = task.kind === 'x';
     const statusOf = (step) => index.get(stepKey(env, step.kind, step.id));
 
     // Knapper på en overskrift med underopgaver virker på alle underopgaver
@@ -279,13 +440,25 @@ export default function SitePage() {
           state={state}
           derived={hasSubs}
           counter={hasSubs && raw.total - raw.na > 0 ? `${raw.done}/${raw.total - raw.na}` : null}
-          commentCount={commentCounts.get(`t:${task.id}`) || 0}
+          commentCount={commentCounts.get(`${isExtra ? 'x' : 't'}:${task.id}`) || 0}
           onDone={hasSubs ? bulkDone : leafDone}
           onNa={hasSubs ? bulkNa : leafNa}
+          renderEdit={
+            isExtra
+              ? (close) => (
+                  <SiteTaskEditor
+                    task={task}
+                    onSave={(patch) => saveSiteTask(task, patch)}
+                    onDelete={() => removeSiteTask(task)}
+                    onClose={close}
+                  />
+                )
+              : undefined
+          }
           renderComments={() => (
             <Comments
-              comments={commentsFor(task.id, null)}
-              onAdd={(body) => addComment(body, { taskId: task.id, env })}
+              comments={isExtra ? commentsFor(null, null, task.id) : commentsFor(task.id, null)}
+              onAdd={(body) => addComment(body, isExtra ? { siteTaskId: task.id, env } : { taskId: task.id, env })}
               onDelete={removeComment}
               placeholder={`Kommentar til "${task.title}"…`}
             />
@@ -325,7 +498,7 @@ export default function SitePage() {
   };
 
   const renderChecklist = (env) => {
-    if (tree.length === 0 || tree.every((s) => s.tasks.length === 0)) {
+    if (tree.every((s) => s.tasks.length === 0)) {
       return (
         <div className="card empty">
           <p>Der er endnu ingen opgaver på listen.</p>
@@ -334,14 +507,16 @@ export default function SitePage() {
       );
     }
     return tree.map((section) => {
-      if (section.tasks.length === 0) return null;
+      const tasks = section.extra ? section.tasks.filter((t) => appliesTo(t, env)) : section.tasks;
+      if (tasks.length === 0) return null;
       const s = finish(rawSectionStats(section, env, index));
-      const body = section.tasks.map((t) => renderTask(t, env)).filter(Boolean);
+      const body = tasks.map((t) => renderTask(t, env)).filter(Boolean);
       if (hideDone && body.length === 0) return null;
       return (
-        <section className={`card checklist-section env-${env}`} key={section.id}>
+        <section className={`card checklist-section env-${env}${section.extra ? ' checklist-extra' : ''}`} key={section.id}>
           <header className="section-head">
             <h3>{section.title}</h3>
+            {section.extra && <span className="tag">Kun dette site</span>}
             <span className={`env-chip env-chip-${env}`}>{ENV_LABEL[env].toUpperCase()}</span>
             <span className="section-count">{s.base > 0 ? `${s.done}/${s.base}` : 'Alt irrelevant'}</span>
             <span className="section-mini" aria-hidden="true">
@@ -410,6 +585,7 @@ export default function SitePage() {
             <span className="legend muted small">✓ færdig · – ikke relevant · klik igen for at fortryde</span>
           </div>
           {renderChecklist(tab)}
+          <AddSiteTask siteName={site.name} onAdd={addSiteTask} />
         </>
       )}
 

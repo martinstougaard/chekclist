@@ -6,6 +6,8 @@
 //  - Et trin har status 'done', 'na' (ikke relevant) eller er åbent (ingen række).
 //  - Fremskridt = done / (trin − na). Irrelevante trin tæller ikke med.
 //  - En opgave med underopgaver er færdig, når alle underopgaver er done eller na.
+//  - Ekstra opgaver, der kun gælder ét site, lægges som en sidste sektion (withSiteTasks).
+//    De kan gælde 'both', 'test' eller 'prod'; i det andet miljø tæller de ikke med.
 
 export const ENVS = ['test', 'prod'];
 export const ENV_LABEL = { test: 'Test', prod: 'Produktion' };
@@ -34,7 +36,7 @@ export function buildTree({ sections, tasks, subtasks }) {
   }));
 }
 
-/** kind: 't' (opgave) eller 's' (underopgave) */
+/** kind: 't' (opgave), 's' (underopgave) eller 'x' (ekstra opgave på ét site) */
 export const stepKey = (env, kind, id) => `${env}:${kind}:${id}`;
 
 /** Gør en liste af site_progress-rækker (for ét site) slåbar: nøgle → 'done' | 'na'. */
@@ -43,6 +45,7 @@ export function indexProgress(rows) {
   for (const r of rows) {
     if (r.task_id) map.set(stepKey(r.environment, 't', r.task_id), r.status);
     else if (r.subtask_id) map.set(stepKey(r.environment, 's', r.subtask_id), r.status);
+    else if (r.site_task_id) map.set(stepKey(r.environment, 'x', r.site_task_id), r.status);
   }
   return map;
 }
@@ -51,12 +54,35 @@ export function indexProgress(rows) {
 export function taskSteps(task) {
   return task.subtasks.length
     ? task.subtasks.map((s) => ({ kind: 's', id: s.id }))
-    : [{ kind: 't', id: task.id }];
+    : [{ kind: task.kind || 't', id: task.id }];
+}
+
+/** Gælder opgaven i dette miljø? Kun ekstra opgaver kan være begrænset til test eller produktion. */
+export const appliesTo = (task, env) =>
+  !task.environments || task.environments === 'both' || task.environments === env;
+
+export const SITE_SECTION_ID = 'site-extra';
+
+/**
+ * Tilføjer sitets egne ekstra opgaver som en sidste sektion i træet.
+ * siteTasks: rækker fra site_tasks for netop dette site.
+ */
+export function withSiteTasks(tree, siteTasks) {
+  if (!siteTasks || siteTasks.length === 0) return tree;
+  const extra = {
+    id: SITE_SECTION_ID,
+    title: 'Ekstra opgaver til dette site',
+    extra: true,
+    position: Number.MAX_SAFE_INTEGER,
+    tasks: [...siteTasks].sort(byPosition).map((t) => ({ ...t, kind: 'x', subtasks: [] })),
+  };
+  return [...tree, extra];
 }
 
 /** Rå tællere for én opgave i ét miljø. */
 export function rawTaskStats(task, env, index) {
   const stats = { done: 0, na: 0, total: 0 };
+  if (!appliesTo(task, env)) return stats;
   for (const step of taskSteps(task)) {
     stats.total += 1;
     const status = index.get(stepKey(env, step.kind, step.id));

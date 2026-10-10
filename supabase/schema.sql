@@ -47,35 +47,53 @@ create table public.sites (
   created_at     timestamptz not null default now()
 );
 
+-- Ekstra opgaver, der kun gælder ét site (ud over standardlisten).
+create table public.site_tasks (
+  id           uuid primary key default gen_random_uuid(),
+  site_id      uuid not null references public.sites(id) on delete cascade,
+  title        text not null,
+  description  text not null default '',
+  -- Hvor opgaven gælder: begge miljøer, kun test eller kun produktion
+  environments text not null default 'both' check (environments in ('both', 'test', 'prod')),
+  position     int  not null default 0,
+  created_by   uuid references public.profiles(id) on delete set null,
+  created_at   timestamptz not null default now()
+);
+create index site_tasks_site_idx on public.site_tasks (site_id);
+
 -- Én række pr. afkrydset (done) eller irrelevant (na) trin.
 -- Mangler der en række, er trinnet åbent.
--- Enten task_id (opgave uden underopgaver) eller subtask_id er udfyldt.
+-- Præcis én af task_id (opgave uden underopgaver), subtask_id (underopgave)
+-- eller site_task_id (ekstra opgave på sitet) er udfyldt.
 create table public.site_progress (
   id          uuid primary key default gen_random_uuid(),
   site_id     uuid not null references public.sites(id) on delete cascade,
   environment text not null check (environment in ('test', 'prod')),
   task_id     uuid references public.tasks(id) on delete cascade,
   subtask_id  uuid references public.subtasks(id) on delete cascade,
+  site_task_id uuid references public.site_tasks(id) on delete cascade,
   status      text not null check (status in ('done', 'na')),
   updated_by  uuid references public.profiles(id) on delete set null,
   updated_at  timestamptz not null default now(),
-  check ((task_id is null) <> (subtask_id is null)),
+  constraint site_progress_one_target check (num_nonnulls(task_id, subtask_id, site_task_id) = 1),
   unique (site_id, environment, task_id),
-  unique (site_id, environment, subtask_id)
+  unique (site_id, environment, subtask_id),
+  constraint site_progress_site_task_uq unique (site_id, environment, site_task_id)
 );
 create index site_progress_site_idx on public.site_progress (site_id);
 
--- Kommentarer: på site (task_id og subtask_id tomme), på opgave eller på underopgave.
+-- Kommentarer: på site (alle tre mål tomme), på opgave, underopgave eller ekstra opgave.
 create table public.comments (
   id          uuid primary key default gen_random_uuid(),
   site_id     uuid not null references public.sites(id) on delete cascade,
   environment text check (environment in ('test', 'prod')),
   task_id     uuid references public.tasks(id) on delete cascade,
   subtask_id  uuid references public.subtasks(id) on delete cascade,
+  site_task_id uuid references public.site_tasks(id) on delete cascade,
   author_id   uuid references public.profiles(id) on delete set null,
   body        text not null check (length(trim(body)) > 0),
   created_at  timestamptz not null default now(),
-  check (task_id is null or subtask_id is null)
+  constraint comments_one_target check (num_nonnulls(task_id, subtask_id, site_task_id) <= 1)
 );
 create index comments_site_idx on public.comments (site_id);
 
@@ -121,6 +139,7 @@ alter table public.sections      enable row level security;
 alter table public.tasks         enable row level security;
 alter table public.subtasks      enable row level security;
 alter table public.sites         enable row level security;
+alter table public.site_tasks    enable row level security;
 alter table public.site_progress enable row level security;
 alter table public.comments      enable row level security;
 
@@ -155,6 +174,14 @@ create policy "sites_update" on public.sites for update to authenticated
 create policy "sites_delete" on public.sites for delete to authenticated
   using (public.is_admin() or created_by = auth.uid());
 
+-- Ekstra opgaver pr. site: alle loggede brugere kan læse, oprette, rette og slette.
+create policy "site_tasks_select" on public.site_tasks for select to authenticated using (true);
+create policy "site_tasks_insert" on public.site_tasks for insert to authenticated
+  with check (created_by = auth.uid());
+create policy "site_tasks_update" on public.site_tasks for update to authenticated
+  using (true) with check (true);
+create policy "site_tasks_delete" on public.site_tasks for delete to authenticated using (true);
+
 -- Afkrydsninger: alle loggede brugere.
 create policy "progress_select" on public.site_progress for select to authenticated using (true);
 create policy "progress_insert" on public.site_progress for insert to authenticated
@@ -177,6 +204,7 @@ begin
   alter publication supabase_realtime add table public.site_progress;
   alter publication supabase_realtime add table public.comments;
   alter publication supabase_realtime add table public.sites;
+  alter publication supabase_realtime add table public.site_tasks;
 exception when others then
   raise notice 'Realtime-publikation kunne ikke opdateres (kan ignoreres): %', sqlerrm;
 end $$;

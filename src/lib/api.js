@@ -61,7 +61,7 @@ export const deleteSite = async (id) =>
   check(await supabase.from('sites').delete().eq('id', id));
 
 // ---------- Afkrydsninger ----------
-const PROGRESS_COLUMNS = 'site_id,environment,task_id,subtask_id,status';
+const PROGRESS_COLUMNS = 'site_id,environment,task_id,subtask_id,site_task_id,status';
 
 /** Alle afkrydsninger (til forsiden) eller for ét site. */
 export const loadProgress = async (siteId = null) =>
@@ -71,53 +71,56 @@ export const loadProgress = async (siteId = null) =>
     return q;
   });
 
+/** Hvilken kolonne i site_progress et trin peger på: opgave, underopgave eller ekstra opgave. */
+const STEP_COLUMN = { t: 'task_id', s: 'subtask_id', x: 'site_task_id' };
+
 /**
  * Sæt status for en række trin.
- * steps: [{ kind: 't' | 's', id }], status: 'done' | 'na' | null (null = åbent igen)
+ * steps: [{ kind: 't' | 's' | 'x', id }], status: 'done' | 'na' | null (null = åbent igen)
  */
 export async function setStatus(siteId, env, steps, status, userId) {
-  const taskIds = steps.filter((s) => s.kind === 't').map((s) => s.id);
-  const subIds = steps.filter((s) => s.kind === 's').map((s) => s.id);
-
-  if (!status) {
-    if (taskIds.length) {
-      check(
-        await supabase
-          .from('site_progress').delete()
-          .eq('site_id', siteId).eq('environment', env).in('task_id', taskIds)
-      );
-    }
-    if (subIds.length) {
-      check(
-        await supabase
-          .from('site_progress').delete()
-          .eq('site_id', siteId).eq('environment', env).in('subtask_id', subIds)
-      );
-    }
-    return;
-  }
-
   const stamp = new Date().toISOString();
-  const base = { site_id: siteId, environment: env, status, updated_by: userId, updated_at: stamp };
-  if (taskIds.length) {
-    check(
-      await supabase
-        .from('site_progress')
-        .upsert(taskIds.map((id) => ({ ...base, task_id: id })), {
-          onConflict: 'site_id,environment,task_id',
-        })
-    );
-  }
-  if (subIds.length) {
-    check(
-      await supabase
-        .from('site_progress')
-        .upsert(subIds.map((id) => ({ ...base, subtask_id: id })), {
-          onConflict: 'site_id,environment,subtask_id',
-        })
-    );
+  for (const kind of Object.keys(STEP_COLUMN)) {
+    const ids = steps.filter((s) => s.kind === kind).map((s) => s.id);
+    if (ids.length === 0) continue;
+    const column = STEP_COLUMN[kind];
+    if (!status) {
+      check(
+        await supabase
+          .from('site_progress').delete()
+          .eq('site_id', siteId).eq('environment', env).in(column, ids)
+      );
+    } else {
+      const rows = ids.map((id) => ({
+        site_id: siteId, environment: env, status, updated_by: userId, updated_at: stamp, [column]: id,
+      }));
+      check(
+        await supabase
+          .from('site_progress')
+          .upsert(rows, { onConflict: `site_id,environment,${column}` })
+      );
+    }
   }
 }
+
+// ---------- Ekstra opgaver pr. site ----------
+export const loadSiteTasks = async (siteId) =>
+  fetchAll(() =>
+    supabase.from('site_tasks').select('*').eq('site_id', siteId).order('position').order('id')
+  );
+
+/** Alle sites' ekstra opgaver (til forsiden). */
+export const loadAllSiteTasks = async () =>
+  fetchAll(() => supabase.from('site_tasks').select('*').order('id'));
+
+export const createSiteTask = async (values) =>
+  check(await supabase.from('site_tasks').insert(values).select().single());
+
+export const updateSiteTask = async (id, patch) =>
+  check(await supabase.from('site_tasks').update(patch).eq('id', id));
+
+export const deleteSiteTask = async (id) =>
+  check(await supabase.from('site_tasks').delete().eq('id', id));
 
 // ---------- Kommentarer ----------
 export const loadComments = async (siteId) =>

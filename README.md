@@ -4,6 +4,7 @@ Web-app til at gennemgå tjeklisten, når et nyt site bygges i WMS – både i *
 
 - **Forside:** alle sites med ansvarlig, oprettelsesdato, deadline og procesbarer (samlet, test og produktion).
 - **Site-side:** tjeklisten for test og produktion, afkrydsning (✓) eller "ikke relevant" (–), underopgaver, vejledning pr. opgave og kommentarer på opgaver og på hele sitet.
+- **Ekstra opgaver til ét site:** nederst på hvert site kan alle brugere tilføje opgaver, der kun gælder det site, fx noget sitet selv har bedt om. De kan gælde test, produktion eller begge, og de tæller med i procesbarerne.
 - **Opgaver (administratorer):** opret sektioner, opgaver og underopgaver, og sortér dem i den rækkefølge, de skal vises.
 - **Brugere (administratorer):** inviter kolleger på e-mail og vælg, hvem der er administrator.
 
@@ -19,7 +20,11 @@ Teknik: React + Vite, Supabase (database og login), Netlify (hosting og én funk
 2. Gå til **SQL Editor → New query**, indsæt hele indholdet af `supabase/schema.sql`, og tryk **Run**.
 3. Gå til **Authentication** og find indstillingen **Allow new users to sign up** (under *Sign In / Providers* → *User Signups*). **Slå den fra**, så kun inviterede kan komme ind.
 4. Gå til **Authentication → Users → Add user → Create new user**. Skriv din egen e-mail og en adgangskode, og sæt flueben i *Auto Confirm User*. Den **første bruger bliver automatisk administrator**.
-5. Gå til **Project Settings → API** og notér: *Project URL*, *anon public key* og *service_role key*. Brug dem i trin 3.
+5. Find tre værdier, som du skal bruge i trin 3:
+   - **Project URL:** tryk på **Connect** øverst i projektet. Den ser ud som `https://abcdefghijklmnop.supabase.co`.
+   - **Publishable key** (`sb_publishable_…`) og **Secret key** (`sb_secret_…`): gå til **Settings → API Keys** og vælg fanen *Publishable and secret API keys*. Står der en knap, der hedder *Create new API keys*, så tryk på den først.
+
+   Supabase kalder de ældre nøgler `anon` og `service_role` for forældede, så brug de nye.
 
 ### 2. Læg koden på GitHub
 
@@ -33,11 +38,11 @@ Opret et (privat) repository på GitHub og læg projektmappen op. Filen `.env` s
    | Navn | Værdi |
    |---|---|
    | `VITE_SUPABASE_URL` | Project URL |
-   | `VITE_SUPABASE_ANON_KEY` | anon public key |
+   | `VITE_SUPABASE_ANON_KEY` | Publishable key (navnet står som `ANON`, fordi koden læser det navn) |
    | `SUPABASE_URL` | Project URL (samme som ovenfor) |
-   | `SUPABASE_SERVICE_ROLE_KEY` | service_role key. Markér den som **secret**. |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Secret key. Markér den som **secret**. |
 
-   `service_role`-nøglen giver fuld adgang til databasen. Den må **aldrig** have `VITE_` foran, og den må ikke ligge i git.
+   Secret key giver fuld adgang til databasen. Den må **aldrig** have `VITE_` foran, og den må ikke ligge i git.
 3. Tryk **Deploy**. Notér adressen, fx `https://dit-navn.netlify.app`.
 
 ### 4. Fortæl Supabase, hvor appen ligger
@@ -62,9 +67,25 @@ Uden dette virker linkene i invitationer og "glemt adgangskode" ikke.
 - **Test og produktion** har præcis samme opgaver, men afkrydses hver for sig.
 - **Procesbarer:** hvert trin (en underopgave, eller en opgave uden underopgaver) tæller som ét. *Ikke relevante* trin (–) tæller ikke med. En bar når først 100 %, når alt er færdigt eller markeret irrelevant. *Samlet* er test og produktion lagt sammen.
 - **Opgave med underopgaver** bliver færdig automatisk, når alle underopgaver er ✓ eller –. Knapperne på selve overskriften virker på alle underopgaver på én gang.
+- **Ekstra opgaver** ligger i en egen sektion nederst på sitet ("Ekstra opgaver til dette site"). Man tilføjer dem i boksen under listen og vælger, om de gælder test, produktion eller begge. Kun opgaver for det miljø, man står i, vises, og kun de tæller med dér. Alle brugere kan rette og slette dem (✎ ved opgaven). Sletter man en, forsvinder dens afkrydsninger og kommentarer også.
 - **Ændrer du listen**, slår det igennem på alle sites med det samme. Nye opgaver dukker op som åbne på eksisterende sites, og procenterne regnes om.
 - **Sletter du en opgave**, forsvinder dens afkrydsninger og kommentarer også.
 - **Live-opdatering:** krydser en kollega af, mens du har sitet åbent, opdateres siden af sig selv.
+
+## Opdatering af en database, der allerede kører
+
+Når der kommer nye funktioner, der kræver ændringer i databasen, ligger der en fil i `supabase/migrations/`. Rækkefølgen er:
+
+1. Kør filen i Supabase → **SQL Editor** (indsæt indholdet, og tryk **Run**). Filerne er skrevet, så de kan køres igen uden skade, og de sletter ikke data.
+2. Læg derefter den nye kode på GitHub. Netlify bygger sitet om af sig selv.
+
+Gør det i den rækkefølge. Lægger du ny kode op, før databasen er opdateret, kan sitesiden vise en fejl, indtil SQL'en er kørt.
+
+| Fil | Hvad den gør |
+|---|---|
+| `002_ekstra_opgaver_pr_site.sql` | Tilføjer ekstra opgaver, der kun gælder ét site. |
+
+En helt ny installation behøver ikke disse filer, for `schema.sql` indeholder allerede alt.
 
 ## Kør lokalt (valgfrit)
 
@@ -89,6 +110,7 @@ Invitationer og fjernelse af brugere går via Netlify-funktionen og virker derfo
 
 ```
 supabase/schema.sql              Database: tabeller, rettigheder, automatisk profil ved ny bruger
+supabase/migrations/             Opdateringer til en database, der allerede kører
 netlify/functions/admin-users.mjs  Invitér og fjern brugere (bruger service_role-nøglen)
 src/lib/progress.js              Fremskridtsberegning (testet)
 src/lib/api.js                   Alle kald til databasen

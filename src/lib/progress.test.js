@@ -7,6 +7,8 @@ import {
   taskState,
   finish,
   siteStats,
+  withSiteTasks,
+  appliesTo,
 } from './progress.js';
 
 const structure = {
@@ -30,6 +32,7 @@ const row = (env, key, status) => ({
   status,
   task_id: key.startsWith('t') ? key : null,
   subtask_id: key.startsWith('u') ? key : null,
+  site_task_id: key.startsWith('x') ? key : null,
 });
 
 test('træet sorteres efter position', () => {
@@ -94,4 +97,66 @@ test('opgave uden underopgaver bruger sin egen status', () => {
   const idx = indexProgress([row('prod', 't2', 'done')]);
   assert.equal(taskState(rawTaskStats(t2, 'prod', idx)), 'done');
   assert.equal(taskState(rawTaskStats(t2, 'test', idx)), 'open');
+});
+
+// ---------- Ekstra opgaver på ét site ----------
+const extras = [
+  { id: 'x2', site_id: 'S', title: 'Kun produktion', environments: 'prod', position: 2 },
+  { id: 'x1', site_id: 'S', title: 'Begge steder', environments: 'both', position: 1 },
+  { id: 'x3', site_id: 'S', title: 'Kun test', environments: 'test', position: 3 },
+];
+
+test('ekstra opgaver lægges som sidste sektion, sorteret efter position', () => {
+  const t = withSiteTasks(tree, extras);
+  assert.equal(t.length, tree.length + 1);
+  const last = t[t.length - 1];
+  assert.equal(last.extra, true);
+  assert.deepEqual(last.tasks.map((x) => x.id), ['x1', 'x2', 'x3']);
+  assert.equal(withSiteTasks(tree, []), tree);
+});
+
+test('ekstra opgaver tæller kun i de miljøer, de gælder i', () => {
+  assert.equal(appliesTo(extras[0], 'test'), false);
+  assert.equal(appliesTo(extras[0], 'prod'), true);
+  const s = siteStats(withSiteTasks(tree, extras), []);
+  // test: 4 standardtrin + x1 + x3 = 6, prod: 4 + x1 + x2 = 6
+  assert.equal(s.test.total, 6);
+  assert.equal(s.prod.total, 6);
+  assert.equal(s.total.total, 12);
+});
+
+test('afkrydsning af ekstra opgave tæller kun i det miljø, den er sat i', () => {
+  const t = withSiteTasks(tree, extras);
+  const s = siteStats(t, [row('test', 'x1', 'done')]);
+  assert.equal(s.test.done, 1);
+  assert.equal(s.prod.done, 0);
+});
+
+test('en ekstra opgave kun for produktion påvirker ikke test', () => {
+  const t = withSiteTasks(tree, [extras[0]]);
+  const before = siteStats(tree, []).test;
+  const after = siteStats(t, []).test;
+  assert.deepEqual(after, before);
+  assert.equal(siteStats(t, []).prod.total, before.total + 1);
+});
+
+test('ekstra opgave markeret irrelevant tæller ikke med', () => {
+  const t = withSiteTasks(tree, [extras[1]]);
+  const s = siteStats(t, [row('test', 'x1', 'na')]);
+  assert.equal(s.test.base, 4);
+  assert.equal(s.test.na, 1);
+});
+
+test('en standardopgave og en ekstra opgave med samme id blandes ikke sammen', () => {
+  const t = withSiteTasks(tree, [{ id: 't2', site_id: 'S', title: 'Samme id som standardopgave', environments: 'both', position: 1 }]);
+  const extra = t[t.length - 1].tasks[0];
+  const standard = tree[0].tasks[1]; // også id 't2'
+  // afkrydsning af standardopgaven t2 i test
+  let idx = indexProgress([row('test', 't2', 'done')]);
+  assert.equal(taskState(rawTaskStats(standard, 'test', idx)), 'done');
+  assert.equal(taskState(rawTaskStats(extra, 'test', idx)), 'open');
+  // og omvendt: afkrydsning af den ekstra opgave
+  idx = indexProgress([{ environment: 'test', status: 'done', task_id: null, subtask_id: null, site_task_id: 't2' }]);
+  assert.equal(taskState(rawTaskStats(extra, 'test', idx)), 'done');
+  assert.equal(taskState(rawTaskStats(standard, 'test', idx)), 'open');
 });
