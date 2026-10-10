@@ -17,6 +17,10 @@
   --ok-soft: #e3f5ea;
   --test: #d98a00;
   --prod: #1b8a4b;
+  --test-soft: #fff4dc;
+  --prod-soft: #e3f5ea;
+  --on-test: #1b1405;
+  --on-prod: #ffffff;
   --total: #2457d6;
   --radius: 10px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.04);
@@ -42,6 +46,10 @@
     --ok-soft: #1a3326;
     --test: #f0a63a;
     --prod: #4cc27f;
+    --test-soft: #3b2e14;
+    --prod-soft: #1a3326;
+    --on-test: #1b1405;
+    --on-prod: #0d1f15;
     --total: #6b93ff;
     --shadow: none;
     color-scheme: dark;
@@ -214,8 +222,21 @@ a.site-row:hover { border-color: var(--accent); }
 .tab { background: none; border: 0; border-bottom: 3px solid transparent; padding: 0.6rem 1rem; cursor: pointer; font-weight: 600; color: var(--muted); white-space: nowrap; margin-bottom: -1px; }
 .tab:hover { color: var(--ink); }
 .tab.active { color: var(--ink); border-bottom-color: var(--accent); }
-.tab-test.active { border-bottom-color: var(--test); }
-.tab-prod.active { border-bottom-color: var(--prod); }
+.tab-test.active { border-bottom-color: var(--test); background: var(--test-soft); }
+.tab-prod.active { border-bottom-color: var(--prod); background: var(--prod-soft); }
+
+/* Tydelig markering af hvilket miljø man krydser af i */
+.env-banner { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; padding: 0.6rem 1rem; margin-bottom: 1rem; border: 1px solid; border-radius: var(--radius); font-weight: 500; }
+.env-banner strong { padding: 0.15rem 0.65rem; border-radius: 6px; font-size: 0.85rem; letter-spacing: 0.07em; }
+.env-banner-test { background: var(--test-soft); border-color: var(--test); }
+.env-banner-test strong { background: var(--test); color: var(--on-test); }
+.env-banner-prod { background: var(--prod-soft); border-color: var(--prod); }
+.env-banner-prod strong { background: var(--prod); color: var(--on-prod); }
+.checklist-section.env-test { border-left: 5px solid var(--test); }
+.checklist-section.env-prod { border-left: 5px solid var(--prod); }
+.env-chip { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.07em; padding: 0.1rem 0.5rem; border-radius: 5px; }
+.env-chip-test { background: var(--test); color: var(--on-test); }
+.env-chip-prod { background: var(--prod); color: var(--on-prod); }
 .tab-pct { margin-left: 0.4rem; font-size: 0.78rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 0 0.45rem; font-weight: 600; }
 
 .checklist-section { margin-bottom: 1rem; overflow: hidden; }
