@@ -1,0 +1,18 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Supabase URL og anon-nøglen er offentlige af design (adgang styres af RLS i databasen).
+  # Uden denne linje kan Netlifys secrets-scanning fejlagtigt stoppe buildet.
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY"
+
+[functions]
+  directory = "netlify/functions"
+
+# Single-page-app: alle stier skal ramme index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

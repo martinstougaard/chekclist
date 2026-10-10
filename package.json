@@ -1,0 +1,23 @@
+{
+  "name": "wms-tjekliste",
+  "version": "1.0.0",
+  "description": "Tjekliste til opsætning af nye WMS-sites (test og produktion)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test src/lib/progress.test.js"
+  },
+  "type": "module",
+  "private": "true",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.4"
+  }
+}
