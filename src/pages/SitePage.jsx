@@ -339,9 +339,10 @@ export default function SitePage() {
       const body = section.tasks.map((t) => renderTask(t, env)).filter(Boolean);
       if (hideDone && body.length === 0) return null;
       return (
-        <section className="card checklist-section" key={section.id}>
+        <section className={`card checklist-section env-${env}`} key={section.id}>
           <header className="section-head">
             <h3>{section.title}</h3>
+            <span className={`env-chip env-chip-${env}`}>{ENV_LABEL[env].toUpperCase()}</span>
             <span className="section-count">{s.base > 0 ? `${s.done}/${s.base}` : 'Alt irrelevant'}</span>
             <span className="section-mini" aria-hidden="true">
               <span style={{ width: `${s.pct}%` }} />
@@ -397,6 +398,10 @@ export default function SitePage() {
 
       {tab !== 'kommentarer' && (
         <>
+          <div className={`env-banner env-banner-${tab}`} role="status">
+            <strong>{ENV_LABEL[tab].toUpperCase()}</strong>
+            <span>Du krydser af i {ENV_LABEL[tab].toLowerCase()} for {site.name}</span>
+          </div>
           <div className="toolbar">
             <label className="inline check">
               <input type="checkbox" checked={hideDone} onChange={(e) => setHideDone(e.target.checked)} />
