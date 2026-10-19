@@ -7,6 +7,8 @@ import Login from './pages/Login';
 import SetPassword from './pages/SetPassword';
 import Sites from './pages/Sites';
 import SitePage from './pages/SitePage';
+import GoLive from './pages/GoLive';
+import GoLiveStats from './pages/GoLiveStats';
 import AdminTasks from './pages/AdminTasks';
 import AdminUsers from './pages/AdminUsers';
 
@@ -42,6 +44,8 @@ function Gate() {
       <Routes>
         <Route path="/" element={<Sites />} />
         <Route path="/sites/:id" element={<SitePage />} />
+        <Route path="/sites/:id/go-live" element={<GoLive />} />
+        <Route path="/go-live" element={<GoLiveStats />} />
         <Route path="/adgangskode" element={<SetPassword />} />
         <Route path="/admin/opgaver" element={<AdminOnly><AdminTasks /></AdminOnly>} />
         <Route path="/admin/brugere" element={<AdminOnly><AdminUsers /></AdminOnly>} />

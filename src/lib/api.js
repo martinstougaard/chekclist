@@ -134,6 +134,58 @@ export const addComment = async (values) =>
 export const deleteComment = async (id) =>
   check(await supabase.from('comments').delete().eq('id', id));
 
+// ---------- Go-live ----------
+// Handlingerne (golive_actions) redigeres med insertRow/updateRow/deleteRow.
+export const loadGoLiveActions = async () =>
+  check(await supabase.from('golive_actions').select('*').order('position').order('id'));
+
+export const loadGoLiveRun = async (siteId) =>
+  check(await supabase.from('golive_runs').select('*').eq('site_id', siteId).maybeSingle());
+
+export const loadGoLiveSteps = async (siteId) =>
+  check(await supabase.from('golive_steps').select('*').eq('site_id', siteId).order('position').order('id'));
+
+export const loadGoLiveComments = async (siteId) =>
+  check(await supabase.from('golive_comments').select('*').eq('site_id', siteId).order('created_at').order('id'));
+
+/** Opretter go-live-forløbet og kopierer handlingerne ind som trin. rows kommer fra startPlan(). */
+export async function startGoLive(siteId, userId, startedAt, rows) {
+  check(await supabase.from('golive_runs').insert({ site_id: siteId, started_by: userId, started_at: startedAt }));
+  check(await supabase.from('golive_steps').insert(rows.map((r) => ({ ...r, site_id: siteId }))));
+}
+
+/** updates: [{ id, patch }] */
+export async function updateGoLiveSteps(updates) {
+  for (const u of updates) {
+    check(await supabase.from('golive_steps').update(u.patch).eq('id', u.id));
+  }
+}
+
+export const setGoLiveFinished = async (siteId, finishedAt) =>
+  check(await supabase.from('golive_runs').update({ finished_at: finishedAt }).eq('site_id', siteId));
+
+/** Nulstiller go-live for sitet (kommentarerne bevares). */
+export async function resetGoLive(siteId) {
+  check(await supabase.from('golive_steps').delete().eq('site_id', siteId));
+  check(await supabase.from('golive_runs').delete().eq('site_id', siteId));
+}
+
+export const addGoLiveComment = async (values) =>
+  check(await supabase.from('golive_comments').insert(values).select().single());
+
+export const deleteGoLiveComment = async (id) =>
+  check(await supabase.from('golive_comments').delete().eq('id', id));
+
+/** Alt til statistiksiden. */
+export async function loadGoLiveOverview() {
+  const [runs, steps, sites] = await Promise.all([
+    fetchAll(() => supabase.from('golive_runs').select('*').order('id')),
+    fetchAll(() => supabase.from('golive_steps').select('*').order('id')),
+    supabase.from('sites').select('id,name'),
+  ]);
+  return { runs, steps, sites: check(sites) };
+}
+
 // ---------- Brugeradministration (Netlify-funktion) ----------
 export async function callAdmin(payload) {
   const { data } = await supabase.auth.getSession();

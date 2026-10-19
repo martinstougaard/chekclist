@@ -5,7 +5,8 @@ Web-app til at gennemgå tjeklisten, når et nyt site bygges i WMS – både i *
 - **Forside:** alle sites med ansvarlig, oprettelsesdato, deadline og procesbarer (samlet, test og produktion).
 - **Site-side:** tjeklisten for test og produktion, afkrydsning (✓) eller "ikke relevant" (–), underopgaver, vejledning pr. opgave og kommentarer på opgaver og på hele sitet.
 - **Ekstra opgaver til ét site:** nederst på hvert site kan alle brugere tilføje opgaver, der kun gælder det site, fx noget sitet selv har bedt om. De kan gælde test, produktion eller begge, og de tæller med i procesbarerne.
-- **Opgaver (administratorer):** opret sektioner, opgaver og underopgaver, og sortér dem i den rækkefølge, de skal vises.
+- **Go-live:** en "Go-live"-knap på hvert site åbner en side med store handlingskort, der køres igennem i rækkefølge. Start- og sluttid gemmes for hvert kort, og man kan skrive kommentarer til selve go-live'et. Siden **Go-live** i menuen viser statistik over tid.
+- **Opgaver (administratorer):** opret sektioner, opgaver og underopgaver, og sortér dem i den rækkefølge, de skal vises. Her oprettes også go-live-handlingerne (fanen *Go-live-handlinger*).
 - **Brugere (administratorer):** inviter kolleger på e-mail og vælg, hvem der er administrator.
 
 Teknik: React + Vite, Supabase (database og login), Netlify (hosting og én funktion til invitationer).
@@ -72,6 +73,26 @@ Uden dette virker linkene i invitationer og "glemt adgangskode" ikke.
 - **Sletter du en opgave**, forsvinder dens afkrydsninger og kommentarer også.
 - **Live-opdatering:** krydser en kollega af, mens du har sitet åbent, opdateres siden af sig selv.
 
+## Go-live
+
+**Opret handlingerne (administratorer):** Opgaver → fanen *Go-live-handlinger*. Tilføj handlingerne, sortér dem, og skriv evt. en vejledning til hver. Sæt kryds i *Sideløbende* ved en handling, der løses af en anden samtidig med den første (fx DNS og certifikat). Den kan så startes og afsluttes uafhængigt af rækkefølgen.
+
+**Gennemfør et go-live:** åbn sitet og tryk **Go-live**. Tryk **Start go-live**, og tiden begynder at løbe:
+
+- Handlingerne vises som store kort. Det første kort i rækkefølgen er straks aktivt.
+- Trykker man **Færdig** på det aktive kort, gemmes sluttiden, og det næste kort starter automatisk på nøjagtig samme tidspunkt. Kort, der venter, kan ikke afsluttes.
+- Sideløbende kort har deres egen **Start** og **Færdig**.
+- Ved en fejl trykker man **Fortryd** på kortet (muligt, så længe det næste kort ikke er afsluttet).
+- Go-live er gennemført, når alle kort, også de sideløbende, er færdige. Flere kan have siden åben samtidig, og den opdaterer sig selv.
+- Knappen kan altid trykkes. Er tjeklisten ikke færdig, vises bare en advarsel.
+- Et site har ét go-live. **Nulstil** sletter tiderne, så man kan starte forfra (kommentarerne bevares). Nulstilling kan gøres af administratorer og af den, der startede go-live'et.
+
+**Kommentarer:** nederst på go-live-siden kan alle notere, hvad der gik godt eller skidt.
+
+**Statistik:** menupunktet *Go-live* viser antal gennemførte, gennemsnit, hurtigste og seneste tid, samlet tid pr. go-live over tid og gennemsnit, hurtigste og langsomste tid pr. handling.
+
+Hvert go-live får sin egen kopi af handlingerne, så senere ændringer eller sletning af en handling ikke ændrer tidligere målinger. Sletter man selve sitet, forsvinder dets go-live også. Tiderne tages fra browserens ur på den computer, der trykker, så computerne bør have rigtig tid.
+
 ## Opdatering af en database, der allerede kører
 
 Når der kommer nye funktioner, der kræver ændringer i databasen, ligger der en fil i `supabase/migrations/`. Rækkefølgen er:
@@ -84,6 +105,7 @@ Gør det i den rækkefølge. Lægger du ny kode op, før databasen er opdateret,
 | Fil | Hvad den gør |
 |---|---|
 | `002_ekstra_opgaver_pr_site.sql` | Tilføjer ekstra opgaver, der kun gælder ét site. |
+| `003_go_live.sql` | Tilføjer go-live: handlinger, tidsmåling og kommentarer. Kør den, hvis 002 allerede er kørt. |
 
 En helt ny installation behøver ikke disse filer, for `schema.sql` indeholder allerede alt.
 
@@ -114,5 +136,6 @@ supabase/migrations/             Opdateringer til en database, der allerede kør
 netlify/functions/admin-users.mjs  Invitér og fjern brugere (bruger service_role-nøglen)
 src/lib/progress.js              Fremskridtsberegning (testet)
 src/lib/api.js                   Alle kald til databasen
-src/pages/                       Forside, site-side, opgaveadmin, brugeradmin, login
+src/lib/golive.js                Go-live: rækkefølge, tidsstempler og statistik (testet)
+src/pages/                       Forside, site-side, go-live, statistik, opgaveadmin, brugeradmin, login
 ```

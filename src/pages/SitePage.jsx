@@ -184,23 +184,26 @@ export default function SitePage() {
   const [rows, setRows] = useState([]);
   const [comments, setComments] = useState([]);
   const [siteTasks, setSiteTasks] = useState([]);
+  const [goLive, setGoLive] = useState(null);
   const [hideDone, setHideDone] = useState(false);
   const [editing, setEditing] = useState(false);
 
   const loadAll = useCallback(
     async (withStructure = true) => {
       try {
-        const [s, p, c, x, st] = await Promise.all([
+        const [s, p, c, x, st, gl] = await Promise.all([
           api.loadSite(id),
           api.loadProgress(id),
           api.loadComments(id),
           api.loadSiteTasks(id),
           withStructure ? api.loadStructure() : null,
+          api.loadGoLiveRun(id),
         ]);
         setSite(s);
         setRows(p);
         setComments(c);
         setSiteTasks(x);
+        setGoLive(gl);
         if (st) setStructure(st);
       } catch (e) {
         toast.error(e);
@@ -550,7 +553,15 @@ export default function SitePage() {
               </div>
             </dl>
           </div>
-          <button className="btn" onClick={() => setEditing(true)}>Rediger site</button>
+          <div className="site-head-actions">
+            <Link
+              to={`/sites/${id}/go-live`}
+              className={`btn ${goLive?.finished_at ? 'btn-soft' : 'btn-primary'} btn-golive`}
+            >
+              {goLive?.finished_at ? 'Go-live gennemført ✓' : goLive ? 'Go-live: i gang →' : 'Go-live →'}
+            </Link>
+            <button className="btn" onClick={() => setEditing(true)}>Rediger site</button>
+          </div>
         </div>
         <div className="site-bars">
           <ProgressBar label="Samlet" stat={stats.total} tone="total" />

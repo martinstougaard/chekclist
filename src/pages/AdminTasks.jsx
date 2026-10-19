@@ -2,105 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from '../lib/api';
 import { useToast } from '../lib/toast';
 import { buildTree } from '../lib/progress';
-
-const nextPosition = (list) => list.reduce((max, x) => Math.max(max, x.position), 0) + 1;
-
-/** Tekstfelt der gemmer, når man forlader det (og kun hvis der er ændret noget). */
-function TextField({ value, onCommit, className, placeholder, multiline, rows = 3 }) {
-  const [text, setText] = useState(value);
-  useEffect(() => setText(value), [value]);
-  const commit = () => {
-    const next = text.trim();
-    if (next === value) return;
-    if (!multiline && !next) {
-      setText(value); // titler må ikke være tomme
-      return;
-    }
-    onCommit(next);
-  };
-  const props = {
-    value: text,
-    className,
-    placeholder,
-    onChange: (e) => setText(e.target.value),
-    onBlur: commit,
-  };
-  return multiline ? (
-    <textarea {...props} rows={rows} />
-  ) : (
-    <input {...props} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
-  );
-}
-
-/** Lille formular til at tilføje noget nyt til en liste. */
-function AddForm({ placeholder, onAdd, buttonLabel = 'Tilføj' }) {
-  const [text, setText] = useState('');
-  const submit = async (e) => {
-    e.preventDefault();
-    const value = text.trim();
-    if (!value) return;
-    setText('');
-    await onAdd(value);
-  };
-  return (
-    <form className="add-form" onSubmit={submit}>
-      <input value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} />
-      <button className="btn btn-sm" disabled={!text.trim()}>{buttonLabel}</button>
-    </form>
-  );
-}
-
-function Mover({ index, count, onMove }) {
-  return (
-    <span className="mover">
-      <button type="button" className="icon-btn" disabled={index === 0} onClick={() => onMove(-1)} title="Flyt op" aria-label="Flyt op">↑</button>
-      <button type="button" className="icon-btn" disabled={index === count - 1} onClick={() => onMove(1)} title="Flyt ned" aria-label="Flyt ned">↓</button>
-    </span>
-  );
-}
-
-function ItemRow({ item, index, count, table, sub, onMove, onSave, onDelete, children, extra }) {
-  const [showDesc, setShowDesc] = useState(false);
-  return (
-    <div className={`admin-item${sub ? ' admin-sub' : ''}`}>
-      <div className="admin-item-row">
-        <Mover index={index} count={count} onMove={onMove} />
-        <TextField
-          value={item.title}
-          className="admin-title"
-          onCommit={(title) => onSave(table, item.id, { title })}
-        />
-        {extra}
-        <button
-          type="button"
-          className={`btn btn-sm${showDesc || item.description ? ' btn-soft' : ''}`}
-          onClick={() => setShowDesc((v) => !v)}
-          aria-expanded={showDesc}
-        >
-          Vejledning{item.description ? ' •' : ''}
-        </button>
-        <button type="button" className="icon-btn danger" onClick={() => onDelete(table, item)} title="Slet" aria-label={`Slet ${item.title}`}>
-          🗑
-        </button>
-      </div>
-      {showDesc && (
-        <TextField
-          multiline
-          value={item.description}
-          className="admin-desc"
-          placeholder="Vejledning: trin, tips og links. Vises, når man klikker på ⓘ ved opgaven."
-          onCommit={(description) => onSave(table, item.id, { description })}
-        />
-      )}
-      {children}
-    </div>
-  );
-}
+import AdminGoLive from './AdminGoLive';
+import { AddForm, ItemRow, Mover, TextField, nextPosition } from '../components/AdminParts';
 
 export default function AdminTasks() {
   const toast = useToast();
   const [structure, setStructure] = useState(null);
   const [collapsed, setCollapsed] = useState(() => new Set());
+  const [tab, setTab] = useState('tjekliste');
 
   const load = useCallback(async () => {
     try {
@@ -128,8 +37,10 @@ export default function AdminTasks() {
 
   const save = (table, id, patch) => run(() => api.updateRow(table, id, patch));
 
-  const add = (table, values, list) =>
-    run(() => api.insertRow(table, { ...values, position: nextPosition(list) }));
+  const add = async (table, values, list) => {
+    await run(() => api.insertRow(table, { ...values, position: nextPosition(list) }));
+    toast.success(`Tilføjet: "${values.title}" (nederst på listen)`);
+  };
 
   const remove = (table, item, warning) => {
     if (!window.confirm(warning)) return;
@@ -169,10 +80,29 @@ export default function AdminTasks() {
       <div className="page-head">
         <h1>Opgaver</h1>
       </div>
+      <div className="tabs" role="tablist">
+        <button role="tab" aria-selected={tab === 'tjekliste'} className={`tab${tab === 'tjekliste' ? ' active' : ''}`} onClick={() => setTab('tjekliste')}>
+          Tjekliste
+        </button>
+        <button role="tab" aria-selected={tab === 'golive'} className={`tab${tab === 'golive' ? ' active' : ''}`} onClick={() => setTab('golive')}>
+          Go-live-handlinger
+        </button>
+      </div>
+      {tab === 'golive' ? <AdminGoLive /> : (
+      <>
       <p className="muted">
         Her bygger du standardlisten, som alle sites følger – i både test og produktion. Ændringer slår igennem på alle sites med det samme.
         Rækkefølgen her er den rækkefølge, opgaverne vises i. En opgave med underopgaver bliver først færdig, når alle underopgaver er afkrydset eller markeret som ikke relevante.
       </p>
+
+      <div className="card pad">
+        <h3>Ny sektion</h3>
+        <AddForm
+          placeholder="fx Grundopsætning"
+          onAdd={(title) => add('sections', { title }, tree)}
+          buttonLabel="Tilføj sektion"
+        />
+      </div>
 
       {tree.length === 0 && (
         <div className="card empty">
@@ -208,6 +138,11 @@ export default function AdminTasks() {
 
           {!collapsed.has(section.id) && (
             <div className="admin-section-body">
+              <AddForm
+                placeholder={`+ Ny opgave i "${section.title}"`}
+                onAdd={(title) => add('tasks', { section_id: section.id, title }, section.tasks)}
+                buttonLabel="Tilføj opgave"
+              />
               {section.tasks.map((task, ti) => (
                 <ItemRow
                   key={task.id}
@@ -241,6 +176,10 @@ export default function AdminTasks() {
                   }
                 >
                   <div className="admin-subs">
+                    <AddForm
+                      placeholder="+ Ny underopgave"
+                      onAdd={(title) => add('subtasks', { task_id: task.id, title }, task.subtasks)}
+                    />
                     {task.subtasks.map((sub, i) => (
                       <ItemRow
                         key={sub.id}
@@ -256,31 +195,16 @@ export default function AdminTasks() {
                         }
                       />
                     ))}
-                    <AddForm
-                      placeholder="+ Ny underopgave"
-                      onAdd={(title) => add('subtasks', { task_id: task.id, title }, task.subtasks)}
-                    />
                   </div>
                 </ItemRow>
               ))}
-              <AddForm
-                placeholder={`+ Ny opgave i "${section.title}"`}
-                onAdd={(title) => add('tasks', { section_id: section.id, title }, section.tasks)}
-                buttonLabel="Tilføj opgave"
-              />
             </div>
           )}
         </section>
       ))}
 
-      <div className="card pad">
-        <h3>Ny sektion</h3>
-        <AddForm
-          placeholder="fx Grundopsætning"
-          onAdd={(title) => add('sections', { title }, tree)}
-          buttonLabel="Tilføj sektion"
-        />
-      </div>
+      </>
+      )}
     </div>
   );
 }
