@@ -437,3 +437,13 @@ div.golive-finished.notice { margin-top: 1rem; border: 0; }
   .run-bar-row { grid-template-columns: 1fr 80px; }
   .run-bar-track { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* ---------- Brugere: oprettelse med adgangskode ---------- */
+.pw-row { display: flex; gap: 0.4rem; }
+.pw-row input { flex: 1; min-width: 0; }
+.created-card { border-left: 6px solid var(--ok); }
+.created-login { margin: 0.5rem 0 0.8rem; display: grid; gap: 0.3rem; }
+.created-login div { display: flex; gap: 0.8rem; align-items: baseline; }
+.created-login dt { min-width: 6.5rem; color: var(--muted); }
+.created-login dd { margin: 0; }
+.created-login code { font-size: 1.1rem; font-weight: 700; background: var(--surface-2); padding: 0.15rem 0.5rem; border-radius: 6px; user-select: all; }

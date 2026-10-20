@@ -4,27 +4,61 @@ import { useAuth } from '../lib/auth';
 import { useToast } from '../lib/toast';
 import { formatDate } from '../lib/format';
 
+/** 12 tegn uden tegn, der kan forveksles (0/O, 1/l/I). */
+function generatePassword() {
+  const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('');
+}
+
 export default function AdminUsers() {
   const { profiles, user, refreshProfiles } = useAuth();
   const toast = useToast();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [created, setCreated] = useState(null); // { name, email, password } – vises én gang
 
-  const invite = async (e) => {
+  const create = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.callAdmin({ action: 'invite', email, name });
-      toast.success(`Invitation sendt til ${email.trim()}.`);
+      await api.callAdmin({ action: 'create', email, name, password });
+      setCreated({ name: name.trim(), email: email.trim().toLowerCase(), password });
       setEmail('');
       setName('');
-      // Profilen oprettes først, når brugeren er oprettet – det sker ved invitationen
+      setPassword('');
       await refreshProfiles();
     } catch (err) {
       toast.error(err);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const resetPassword = async (p) => {
+    const next = window.prompt(`Ny adgangskode til ${p.name} (mindst 8 tegn):`, generatePassword());
+    if (next === null) return;
+    if (next.length < 8) {
+      toast.error('Adgangskoden skal være mindst 8 tegn.');
+      return;
+    }
+    try {
+      await api.callAdmin({ action: 'password', id: p.id, password: next });
+      setCreated({ name: p.name, email: p.email, password: next, reset: true });
+    } catch (err) {
+      toast.error(err);
+    }
+  };
+
+  const copyLogin = async () => {
+    const text = `Log ind på ${window.location.origin}\nE-mail: ${created.email}\nAdgangskode: ${created.password}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Kopieret.');
+    } catch {
+      toast.error('Kunne ikke kopiere. Markér teksten og kopiér den selv.');
     }
   };
 
@@ -55,9 +89,11 @@ export default function AdminUsers() {
         <h1>Brugere</h1>
       </div>
 
-      <form className="card pad form form-inline" onSubmit={invite}>
-        <h3>Inviter en kollega</h3>
-        <p className="muted small">Personen får en e-mail med et link, hvor man vælger sin adgangskode.</p>
+      <form className="card pad form form-inline" onSubmit={create}>
+        <h3>Opret en bruger</h3>
+        <p className="muted small">
+          Du vælger en adgangskode og giver den videre til kollegaen. Der sendes ingen e-mail. Kollegaen kan selv skifte den bagefter under "Adgangskode".
+        </p>
         <div className="form-row">
           <label>
             Navn
@@ -67,9 +103,29 @@ export default function AdminUsers() {
             E-mail
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="navn@firma.dk" required />
           </label>
-          <button className="btn btn-primary" disabled={busy}>{busy ? 'Sender…' : 'Send invitation'}</button>
+          <label>
+            Adgangskode
+            <span className="pw-row">
+              <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mindst 8 tegn" minLength={8} required autoComplete="off" />
+              <button type="button" className="btn btn-sm" onClick={() => setPassword(generatePassword())}>Lav en</button>
+            </span>
+          </label>
+          <button className="btn btn-primary" disabled={busy}>{busy ? 'Opretter…' : 'Opret bruger'}</button>
         </div>
       </form>
+
+      {created && (
+        <div className="card pad created-card" role="status">
+          <h3>{created.reset ? 'Ny adgangskode sat' : 'Bruger oprettet'}</h3>
+          <p>Giv disse oplysninger til {created.name}. Adgangskoden vises ikke igen, når du lukker boksen.</p>
+          <dl className="created-login">
+            <div><dt>E-mail</dt><dd>{created.email}</dd></div>
+            <div><dt>Adgangskode</dt><dd><code>{created.password}</code></dd></div>
+          </dl>
+          <button type="button" className="btn btn-sm" onClick={copyLogin}>Kopiér login-oplysninger</button>{' '}
+          <button type="button" className="btn btn-sm" onClick={() => setCreated(null)}>Luk</button>
+        </div>
+      )}
 
       <div className="card table-card">
         <table className="table">
@@ -95,8 +151,9 @@ export default function AdminUsers() {
                   </select>
                 </td>
                 <td className="right">
+                  <button className="link-btn" onClick={() => resetPassword(p)}>Ny adgangskode</button>
                   {p.id !== user.id && (
-                    <button className="link-btn danger" onClick={() => remove(p)}>Fjern</button>
+                    <>{' · '}<button className="link-btn danger" onClick={() => remove(p)}>Fjern</button></>
                   )}
                 </td>
               </tr>

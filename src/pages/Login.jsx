@@ -5,7 +5,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(linkError ? 'Linket er ugyldigt eller udløbet. Bed en administrator om en ny invitation, eller brug "Glemt adgangskode".' : '');
+  const [error, setError] = useState(linkError ? 'Linket er ugyldigt eller udløbet. Bed en administrator om en ny adgangskode.' : '');
   const [info, setInfo] = useState('');
 
   const login = async (e) => {
@@ -28,7 +28,7 @@ export default function Login() {
       redirectTo: window.location.origin,
     });
     if (error) setError(error.message);
-    else setInfo('Hvis e-mailen findes, er der sendt et link til at vælge en ny adgangskode.');
+    else setInfo('Hvis e-mailen findes, er der sendt et link. Kommer der ingen mail, så bed en administrator om en ny adgangskode.');
   };
 
   return (

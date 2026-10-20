@@ -204,6 +204,11 @@ export async function callAdmin(payload) {
     throw new Error('Brugeradministration er ikke tilgængelig her. Den virker kun på det udgivne Netlify-site (eller lokalt med `netlify dev`).');
   }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Fejl (${res.status})`);
+  if (!res.ok) {
+    if (!body.error && res.status >= 500) {
+      throw new Error(`Serverfunktionen svarede ikke (fejl ${res.status}). Se Netlify → Logs → Functions → admin-users for årsagen, og tjek at miljøvariablerne SUPABASE_URL og SUPABASE_SERVICE_ROLE_KEY er sat.`);
+    }
+    throw new Error(body.error || `Fejl (${res.status})`);
+  }
   return body;
 }
