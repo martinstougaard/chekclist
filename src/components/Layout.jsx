@@ -15,11 +15,14 @@ export default function Layout({ children }) {
             <span>WMS Site-tjekliste</span>
           </Link>
           <nav className="nav">
-            <Link to="/" className={cls(pathname === '/' || (pathname.startsWith('/sites') && !pathname.endsWith('/go-live')))}>
+            <Link to="/" className={cls(pathname === '/' || (pathname.startsWith('/sites') && !/go-live$/.test(pathname)))}>
               Sites
             </Link>
-            <Link to="/go-live" className={cls(pathname === '/go-live' || pathname.endsWith('/go-live'))}>
+            <Link to="/go-live" className={cls(/go-live$/.test(pathname))}>
               Go-live
+            </Link>
+            <Link to="/spoergsmaal" className={cls(pathname === '/spoergsmaal')}>
+              Spørgsmål
             </Link>
             {isAdmin && (
               <Link to="/admin/opgaver" className={cls(pathname === '/admin/opgaver')}>

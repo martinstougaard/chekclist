@@ -70,7 +70,13 @@ function Card({ step, number, steps, now, nameOf, onStart, onFinish, onUndo, bus
   );
 }
 
-export default function GoLive() {
+const LABELS = {
+  golive: { name: 'Go-live', lower: 'go-live', path: 'go-live' },
+  technical: { name: 'Technical go-live', lower: 'technical go-live', path: 'technical-go-live' },
+};
+
+export default function GoLive({ kind = 'golive' }) {
+  const L = LABELS[kind];
   const { id } = useParams();
   const { user, isAdmin, nameOf } = useAuth();
   const toast = useToast();
@@ -81,23 +87,26 @@ export default function GoLive() {
   const [comments, setComments] = useState([]);
   const [checklist, setChecklist] = useState(null); // { total, test, prod } i procent
   const [busy, setBusy] = useState(false);
+  const [techRun, setTechRun] = useState(null); // kun relevant for go-live: det låses, til technical go-live er gennemført
 
   const loadAll = useCallback(
     async (withStatic) => {
       try {
-        const [s, r, st, c] = await Promise.all([
+        const [s, r, st, c, tr] = await Promise.all([
           api.loadSite(id),
-          api.loadGoLiveRun(id),
-          api.loadGoLiveSteps(id),
-          api.loadGoLiveComments(id),
+          api.loadGoLiveRun(id, kind),
+          api.loadGoLiveSteps(id, kind),
+          api.loadGoLiveComments(id, kind),
+          kind === 'golive' ? api.loadGoLiveRun(id, 'technical') : null,
         ]);
         setSite(s);
+        setTechRun(tr);
         setRun(r);
         setSteps(st);
         setComments(c);
         if (withStatic) {
           const [acts, structure, rows, extras] = await Promise.all([
-            api.loadGoLiveActions(),
+            api.loadGoLiveActions(kind),
             api.loadStructure(),
             api.loadProgress(id),
             api.loadSiteTasks(id),
@@ -111,7 +120,7 @@ export default function GoLive() {
         setSite((cur) => (cur === undefined ? null : cur));
       }
     },
-    [id, toast]
+    [id, kind, toast]
   );
 
   useEffect(() => {
@@ -127,7 +136,7 @@ export default function GoLive() {
       timer.current = setTimeout(() => loadAll(false), 300);
     };
     const channel = supabase
-      .channel(`golive-${id}`)
+      .channel(`golive-${kind}-${id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'golive_runs' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'golive_steps' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'golive_comments' }, refresh)
@@ -139,7 +148,7 @@ export default function GoLive() {
       document.removeEventListener('visibilitychange', onVisible);
       supabase.removeChannel(channel);
     };
-  }, [id, loadAll]);
+  }, [id, kind, loadAll]);
 
   const running = !!run && !run.finished_at;
   const now = useNow(running);
@@ -165,7 +174,7 @@ export default function GoLive() {
   const start = () =>
     guard(async () => {
       const at = new Date().toISOString();
-      await api.startGoLive(id, user.id, at, startPlan(actions, at, user.id));
+      await api.startGoLive(id, user.id, at, startPlan(actions, at, user.id), kind);
     });
 
   const finishStep = (step) =>
@@ -175,7 +184,7 @@ export default function GoLive() {
       if (plan.updates.length === 0) return;
       applyLocal(plan.updates);
       await api.updateGoLiveSteps(plan.updates);
-      if (plan.runFinishedAt) await api.setGoLiveFinished(id, plan.runFinishedAt);
+      if (plan.runFinishedAt) await api.setGoLiveFinished(id, plan.runFinishedAt, kind);
     });
 
   const startStep = (step) =>
@@ -192,17 +201,17 @@ export default function GoLive() {
       if (!updates) return;
       applyLocal(updates);
       await api.updateGoLiveSteps(updates);
-      if (run?.finished_at) await api.setGoLiveFinished(id, null);
+      if (run?.finished_at) await api.setGoLiveFinished(id, null, kind);
     });
 
   const reset = () => {
-    if (!window.confirm('Nulstil go-live for dette site?\n\nAlle tider slettes, og go-live kan startes forfra. Kommentarerne bevares.')) return;
-    return guard(() => api.resetGoLive(id));
+    if (!window.confirm(`Nulstil ${L.lower} for dette site?\n\nAlle tider slettes, og ${L.lower} kan startes forfra. Kommentarerne bevares.`)) return;
+    return guard(() => api.resetGoLive(id, kind));
   };
 
   const addComment = async (body) => {
     try {
-      await api.addGoLiveComment({ site_id: id, body, author_id: user.id });
+      await api.addGoLiveComment({ site_id: id, kind, body, author_id: user.id });
       await loadAll(false);
     } catch (e) {
       toast.error(e);
@@ -233,6 +242,7 @@ export default function GoLive() {
   }
 
   const finished = !!run?.finished_at;
+  const locked = kind === 'golive' && !run && !techRun?.finished_at;
   const doneCount = steps.filter((s) => s.finished_at).length;
   const canReset = !!run && (isAdmin || run.started_by === user.id);
   const active = activeStep(steps);
@@ -243,7 +253,7 @@ export default function GoLive() {
 
       <div className={`card golive-head${finished ? ' golive-head-done' : running ? ' golive-head-live' : ''}`}>
         <div>
-          <h1>Go-live: {site.name}</h1>
+          <h1>{L.name}: {site.name}</h1>
           {!run && <p className="muted">Ikke startet endnu.</p>}
           {running && (
             <p className="golive-sub">
@@ -274,17 +284,23 @@ export default function GoLive() {
         <div className="card pad golive-start-card">
           {actions.length === 0 ? (
             <>
-              <p>Der er endnu ingen go-live-handlinger.</p>
+              <p>Der er endnu ingen handlinger til {L.lower}.</p>
               {isAdmin
                 ? <Link to="/admin/opgaver" className="btn btn-primary">Opret handlinger</Link>
                 : <p className="muted">En administrator kan oprette dem under Opgaver.</p>}
             </>
           ) : (
             <>
+              {locked && (
+                <div className="notice notice-warn" role="status">
+                  🔒 Go-live er låst, indtil sitet har gennemført technical go-live.{' '}
+                  <Link to={`/sites/${id}/technical-go-live`}>Gå til technical go-live</Link>
+                </div>
+              )}
               {checklist && checklist.any && checklist.total < 100 && (
                 <div className="notice notice-warn" role="status">
                   Tjeklisten for sitet er ikke færdig: samlet {checklist.total} % (test {checklist.test} %, produktion {checklist.prod} %).
-                  Du kan godt starte go-live alligevel.
+                  Du kan godt starte {L.lower} alligevel.
                 </div>
               )}
               {checklist && checklist.any && checklist.total >= 100 && (
@@ -299,8 +315,8 @@ export default function GoLive() {
                   <li key={a.id}>{a.title}{a.parallel && <span className="tag"> Sideløbende</span>}</li>
                 ))}
               </ol>
-              <button type="button" className="btn btn-primary golive-big golive-start-btn" disabled={busy} onClick={start}>
-                Start go-live
+              <button type="button" className="btn btn-primary golive-big golive-start-btn" disabled={busy || locked} onClick={start}>
+                Start {L.lower}
               </button>
             </>
           )}
@@ -326,17 +342,18 @@ export default function GoLive() {
       )}
 
       {run && !finished && !active && !allFinished(steps) && (
-        <p className="muted">Rækkefølgen er færdig. Go-live afsluttes, når de sideløbende kort også er færdige.</p>
+        <p className="muted">Rækkefølgen er færdig. {L.name} afsluttes, når de sideløbende kort også er færdige.</p>
       )}
 
       {finished && (
         <div className="notice notice-ok golive-finished" role="status">
-          Go-live er gennemført på {formatDuration(runDuration(run))}. Tiderne indgår i <Link to="/go-live">statistikken</Link>.
+          {L.name} er gennemført på {formatDuration(runDuration(run))}.{' '}
+          {kind === 'golive' ? <>Tiderne indgår i <Link to="/go-live">statistikken</Link>.</> : 'Tiderne gemmes, men indgår ikke i statistikken.'}
         </div>
       )}
 
       <section className="card pad golive-comments">
-        <h2>Kommentarer til go-live</h2>
+        <h2>Kommentarer til {L.lower}</h2>
         <p className="muted small">Notér, hvad der gik godt eller skidt, så vi kan blive bedre til næste gang.</p>
         <Comments
           comments={comments}
@@ -348,7 +365,7 @@ export default function GoLive() {
 
       {canReset && (
         <p className="golive-reset">
-          <button type="button" className="link-btn danger small" onClick={reset}>Nulstil go-live for dette site</button>
+          <button type="button" className="link-btn danger small" onClick={reset}>Nulstil {L.lower} for dette site</button>
         </p>
       )}
     </div>

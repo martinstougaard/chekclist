@@ -4,19 +4,26 @@ import { useToast } from '../lib/toast';
 import { AddForm, ItemRow, nextPosition } from '../components/AdminParts';
 
 /** Administration af go-live-handlingerne: den liste af store kort, man arbejder igennem ved go-live. */
+const KINDS = {
+  technical: { name: 'Technical go-live', lower: 'technical go-live' },
+  golive: { name: 'Go-live', lower: 'go-live' },
+};
+
 export default function AdminGoLive() {
   const toast = useToast();
+  const [kind, setKind] = useState('technical');
   const [actions, setActions] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      setActions(await api.loadGoLiveActions());
+      setActions(await api.loadGoLiveActions(kind));
     } catch (e) {
       toast.error(e);
     }
-  }, [toast]);
+  }, [toast, kind]);
 
   useEffect(() => {
+    setActions(null);
     load();
   }, [load]);
 
@@ -32,12 +39,12 @@ export default function AdminGoLive() {
   const save = (table, id, patch) => run(() => api.updateRow('golive_actions', id, patch));
 
   const add = async (title) => {
-    await run(() => api.insertRow('golive_actions', { title, position: nextPosition(actions) }));
+    await run(() => api.insertRow('golive_actions', { title, kind, position: nextPosition(actions) }));
     toast.success(`Tilføjet: "${title}" (nederst på listen)`);
   };
 
   const remove = (table, item) => {
-    if (!window.confirm(`Slet handlingen "${item.title}"?\n\nGo-lives, der allerede er startet eller gennemført, beholder deres egen kopi og tider.`)) return;
+    if (!window.confirm(`Slet handlingen "${item.title}"?\n\nForløb, der allerede er startet eller gennemført, beholder deres egen kopi og tider.`)) return;
     return run(() => api.deleteRow('golive_actions', item.id));
   };
 
@@ -51,19 +58,31 @@ export default function AdminGoLive() {
     );
   };
 
-  if (!actions) return <p className="muted">Indlæser go-live-handlinger…</p>;
+  const K = KINDS[kind];
+  const switcher = (
+    <div className="chip-row kind-switch" role="group" aria-label="Vælg begivenhed">
+      {Object.entries(KINDS).map(([k, v]) => (
+        <button key={k} type="button" className={`btn${kind === k ? ' btn-primary' : ''}`} aria-pressed={kind === k} onClick={() => setKind(k)}>
+          {v.name}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (!actions) return <div>{switcher}<p className="muted">Indlæser handlinger…</p></div>;
 
   return (
     <div>
+      {switcher}
       <p className="muted">
-        Det er de store kort, man arbejder igennem, når et site går live. Kortene køres i den rækkefølge, de står i her:
+        Det er de store kort, man arbejder igennem ved {K.lower}. Kortene køres i den rækkefølge, de står i her:
         når man afslutter ét kort, starter det næste automatisk. Et kort, der er markeret <strong>sideløbende</strong>,
         kan en anden person starte og afslutte uafhængigt af rækkefølgen (fx en opgave, der løses samtidig med den første).
-        Tiderne for start og afslutning gemmes for hvert kort. Ændringer påvirker kun go-lives, der startes bagefter.
+        Tiderne for start og afslutning gemmes for hvert kort. Ændringer påvirker kun forløb, der startes bagefter.{kind === 'technical' && ' Technical go-live kommer altid først, og go-live er låst, indtil et site har gennemført den. Tiderne fra technical go-live indgår ikke i statistikken.'}
       </p>
 
       <div className="card pad">
-        <h3>Ny handling</h3>
+        <h3>Ny handling til {K.lower}</h3>
         <AddForm placeholder="fx Sæt integrationer til produktion" onAdd={add} buttonLabel="Tilføj handling" />
       </div>
 

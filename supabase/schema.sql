@@ -207,15 +207,18 @@ create table if not exists public.golive_actions (
   -- true = kører sideløbende (kan startes og afsluttes uafhængigt af rækkefølgen)
   parallel    boolean not null default false,
   position    int  not null default 0,
+  kind        text not null default 'golive' check (kind in ('technical', 'golive')),
   created_at  timestamptz not null default now()
 );
 
 create table if not exists public.golive_runs (
   id          uuid primary key default gen_random_uuid(),
-  site_id     uuid not null unique references public.sites(id) on delete cascade,
+  site_id     uuid not null references public.sites(id) on delete cascade,
+  kind        text not null default 'golive' check (kind in ('technical', 'golive')),
   started_at  timestamptz not null default now(),
   started_by  uuid references public.profiles(id) on delete set null,
-  finished_at timestamptz
+  finished_at timestamptz,
+  constraint golive_runs_site_kind_key unique (site_id, kind)
 );
 
 -- Hvert go-live får sin egen kopi af handlingerne (titel, rækkefølge, sideløbende),
@@ -223,6 +226,7 @@ create table if not exists public.golive_runs (
 create table if not exists public.golive_steps (
   id          uuid primary key default gen_random_uuid(),
   site_id     uuid not null references public.sites(id) on delete cascade,
+  kind        text not null default 'golive' check (kind in ('technical', 'golive')),
   action_id   uuid references public.golive_actions(id) on delete set null,
   title       text not null,
   description text not null default '',
@@ -234,15 +238,18 @@ create table if not exists public.golive_steps (
   finished_by uuid references public.profiles(id) on delete set null
 );
 create index if not exists golive_steps_site_idx on public.golive_steps (site_id);
+create index if not exists golive_steps_site_kind_idx on public.golive_steps (site_id, kind);
 
 create table if not exists public.golive_comments (
   id         uuid primary key default gen_random_uuid(),
   site_id    uuid not null references public.sites(id) on delete cascade,
+  kind       text not null default 'golive' check (kind in ('technical', 'golive')),
   body       text not null check (length(btrim(body)) > 0),
   author_id  uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
 );
 create index if not exists golive_comments_site_idx on public.golive_comments (site_id);
+create index if not exists golive_comments_site_kind_idx on public.golive_comments (site_id, kind);
 
 alter table public.golive_actions  enable row level security;
 alter table public.golive_runs     enable row level security;
@@ -282,6 +289,36 @@ create policy "golive_comments_insert" on public.golive_comments for insert to a
 create policy "golive_comments_delete" on public.golive_comments for delete to authenticated
   using (author_id = auth.uid() or public.is_admin());
 
+-- ---------- Spørgsmål efter go-live ----------
+-- Spørgsmål fra brugerne på et site efter go-live, løsningen og en handling, der kan forhindre det næste gang.
+
+create table if not exists public.golive_issues (
+  id              uuid primary key default gen_random_uuid(),
+  site_id         uuid not null references public.sites(id) on delete cascade,
+  question        text not null check (length(btrim(question)) > 0),
+  asked_by        text not null default '',          -- hvem på sitet, der spurgte (fri tekst)
+  answer          text not null default '',          -- løsningen
+  prevention      text not null default '',          -- handling, så vi undgår det næste gang
+  prevention_done boolean not null default false,
+  status          text not null default 'open' check (status in ('open', 'solved')),
+  created_by      uuid references public.profiles(id) on delete set null,
+  created_at      timestamptz not null default now(),
+  solved_at       timestamptz
+);
+create index if not exists golive_issues_site_idx on public.golive_issues (site_id);
+
+alter table public.golive_issues enable row level security;
+
+drop policy if exists "golive_issues_select" on public.golive_issues;
+drop policy if exists "golive_issues_insert" on public.golive_issues;
+drop policy if exists "golive_issues_update" on public.golive_issues;
+drop policy if exists "golive_issues_delete" on public.golive_issues;
+create policy "golive_issues_select" on public.golive_issues for select to authenticated using (true);
+create policy "golive_issues_insert" on public.golive_issues for insert to authenticated
+  with check (created_by = auth.uid());
+create policy "golive_issues_update" on public.golive_issues for update to authenticated using (true) with check (true);
+create policy "golive_issues_delete" on public.golive_issues for delete to authenticated using (true);
+
 -- ---------- Realtime (live opdatering når en kollega krydser af) -----
 
 do $$
@@ -305,4 +342,12 @@ begin
       raise notice 'Realtime for % kunne ikke slås til (kan ignoreres): %', t, sqlerrm;
     end;
   end loop;
+end $$;
+
+-- Live opdatering af spørgsmål efter go-live
+do $$
+begin
+  alter publication supabase_realtime add table public.golive_issues;
+exception when others then
+  raise notice 'Realtime for golive_issues kunne ikke slås til (kan ignoreres): %', sqlerrm;
 end $$;

@@ -24,8 +24,9 @@ import ProgressBar from '../components/ProgressBar';
 import Modal from '../components/Modal';
 import SiteForm from '../components/SiteForm';
 import Comments, { Linkified } from '../components/Comments';
+import { IssueCard, IssueForm } from '../components/Issues';
 
-const TABS = ['test', 'prod', 'kommentarer'];
+const TABS = ['test', 'prod', 'kommentarer', 'spoergsmaal'];
 
 /** To knapper: ✓ (færdig) og – (ikke relevant). Klik på den aktive nulstiller. */
 function StatusControl({ state, derived, onDone, onNa, label }) {
@@ -185,25 +186,30 @@ export default function SitePage() {
   const [comments, setComments] = useState([]);
   const [siteTasks, setSiteTasks] = useState([]);
   const [goLive, setGoLive] = useState(null);
+  const [techRun, setTechRun] = useState(null);
+  const [issues, setIssues] = useState([]);
   const [hideDone, setHideDone] = useState(false);
   const [editing, setEditing] = useState(false);
 
   const loadAll = useCallback(
     async (withStructure = true) => {
       try {
-        const [s, p, c, x, st, gl] = await Promise.all([
+        const [s, p, c, x, st, gl, iss] = await Promise.all([
           api.loadSite(id),
           api.loadProgress(id),
           api.loadComments(id),
           api.loadSiteTasks(id),
           withStructure ? api.loadStructure() : null,
-          api.loadGoLiveRun(id),
+          api.loadGoLiveRuns(id),
+          api.loadIssues(id),
         ]);
         setSite(s);
         setRows(p);
         setComments(c);
         setSiteTasks(x);
-        setGoLive(gl);
+        setGoLive(gl.find((r) => r.kind === 'golive') || null);
+        setTechRun(gl.find((r) => r.kind === 'technical') || null);
+        setIssues(iss);
         if (st) setStructure(st);
       } catch (e) {
         toast.error(e);
@@ -231,6 +237,8 @@ export default function SitePage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'site_tasks' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'golive_issues' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'golive_runs' }, refresh)
       .subscribe();
     const onVisible = () => document.visibilityState === 'visible' && loadAll(true);
     document.addEventListener('visibilitychange', onVisible);
@@ -240,6 +248,34 @@ export default function SitePage() {
       supabase.removeChannel(channel);
     };
   }, [id, loadAll]);
+
+  const addIssue = async (values) => {
+    try {
+      await api.createIssue({ ...values, site_id: id, created_by: user.id });
+      await loadAll(false);
+    } catch (e) {
+      toast.error(e);
+      throw e;
+    }
+  };
+  const changeIssue = async (issue, patch) => {
+    setIssues((cur) => cur.map((i) => (i.id === issue.id ? { ...i, ...patch } : i)));
+    try {
+      await api.updateIssue(issue.id, patch);
+    } catch (e) {
+      toast.error(e);
+    }
+    await loadAll(false);
+  };
+  const removeIssue = async (issue) => {
+    if (!window.confirm('Slet spørgsmålet?')) return;
+    try {
+      await api.deleteIssue(issue.id);
+    } catch (e) {
+      toast.error(e);
+    }
+    await loadAll(false);
+  };
 
   const tree = useMemo(
     () => withSiteTasks(structure ? buildTree(structure) : [], siteTasks),
@@ -408,6 +444,8 @@ export default function SitePage() {
     );
   }
 
+  const isLive = !!goLive?.finished_at;
+  const techDone = !!techRun?.finished_at;
   const complete = stats.total.total > 0 && stats.total.pct === 100;
   const days = daysUntil(site.deadline);
   const canDelete = isAdmin || site.created_by === user.id;
@@ -547,18 +585,27 @@ export default function SitePage() {
                 <dt>Deadline</dt>
                 <dd>
                   {site.deadline ? formatDate(site.deadline) : 'Ingen'}{' '}
-                  {site.deadline && !complete && days < 0 && <span className="badge badge-danger">Overskredet</span>}
-                  {site.deadline && !complete && days >= 0 && days <= 7 && <span className="badge badge-warn">{days === 0 ? 'I dag' : `${days} dg.`}</span>}
+                  {techDone && <span className="badge badge-tech">Teknisk live</span>}{' '}
+                  {isLive && <span className="badge badge-live">Live</span>}
+                  {!isLive && site.deadline && !complete && days < 0 && <span className="badge badge-danger">Overskredet</span>}
+                  {!isLive && site.deadline && !complete && days >= 0 && days <= 7 && <span className="badge badge-warn">{days === 0 ? 'I dag' : `${days} dg.`}</span>}
                 </dd>
               </div>
             </dl>
           </div>
           <div className="site-head-actions">
             <Link
+              to={`/sites/${id}/technical-go-live`}
+              className={`btn ${techDone ? 'btn-soft' : techRun ? 'btn-primary' : ''} btn-golive`}
+            >
+              {techDone ? 'Technical go-live gennemført ✓' : techRun ? 'Technical go-live: i gang →' : 'Technical go-live →'}
+            </Link>
+            <Link
               to={`/sites/${id}/go-live`}
               className={`btn ${goLive?.finished_at ? 'btn-soft' : 'btn-primary'} btn-golive`}
+              title={!goLive && !techDone ? 'Låst, indtil technical go-live er gennemført' : undefined}
             >
-              {goLive?.finished_at ? 'Go-live gennemført ✓' : goLive ? 'Go-live: i gang →' : 'Go-live →'}
+              {goLive?.finished_at ? 'Go-live gennemført ✓' : goLive ? 'Go-live: i gang →' : techDone ? 'Go-live →' : '🔒 Go-live'}
             </Link>
             <button className="btn" onClick={() => setEditing(true)}>Rediger site</button>
           </div>
@@ -576,13 +623,17 @@ export default function SitePage() {
             {ENV_LABEL[env]} <span className="tab-pct">{stats[env].pct}%</span>
           </button>
         ))}
+        <button role="tab" aria-selected={tab === 'spoergsmaal'} className={`tab${tab === 'spoergsmaal' ? ' active' : ''}`} onClick={() => setTab('spoergsmaal')}>
+          Spørgsmål efter go-live
+          {issues.filter((i) => i.status === 'open').length > 0 && <span className="tab-pct">{issues.filter((i) => i.status === 'open').length}</span>}
+        </button>
         <button role="tab" aria-selected={tab === 'kommentarer'} className={`tab${tab === 'kommentarer' ? ' active' : ''}`} onClick={() => setTab('kommentarer')}>
           Kommentarer til sitet
           {commentsFor(null, null).length > 0 && <span className="tab-pct">{commentsFor(null, null).length}</span>}
         </button>
       </div>
 
-      {tab !== 'kommentarer' && (
+      {tab !== 'kommentarer' && tab !== 'spoergsmaal' && (
         <>
           <div className={`env-banner env-banner-${tab}`} role="status">
             <strong>{ENV_LABEL[tab].toUpperCase()}</strong>
@@ -598,6 +649,17 @@ export default function SitePage() {
           {renderChecklist(tab)}
           <AddSiteTask siteName={site.name} onAdd={addSiteTask} />
         </>
+      )}
+
+      {tab === 'spoergsmaal' && (
+        <div className="issues">
+          {!isLive && <div className="notice notice-warn">Sitet er ikke gået live endnu, men du kan godt registrere spørgsmål.</div>}
+          <IssueForm onAdd={addIssue} />
+          {issues.length === 0 && <p className="muted">Ingen spørgsmål registreret endnu.</p>}
+          {[...issues].sort((a, b) => (a.status === b.status ? 0 : a.status === 'open' ? -1 : 1)).map((i) => (
+            <IssueCard key={i.id} issue={i} onChange={(patch) => changeIssue(i, patch)} onDelete={() => removeIssue(i)} />
+          ))}
+        </div>
       )}
 
       {tab === 'kommentarer' && (

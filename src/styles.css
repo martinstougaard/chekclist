@@ -447,3 +447,29 @@ div.golive-finished.notice { margin-top: 1rem; border: 0; }
 .created-login dt { min-width: 6.5rem; color: var(--muted); }
 .created-login dd { margin: 0; }
 .created-login code { font-size: 1.1rem; font-weight: 700; background: var(--surface-2); padding: 0.15rem 0.5rem; border-radius: 6px; user-select: all; }
+
+/* ---------- Live og spørgsmål efter go-live ---------- */
+.badge-live { background: var(--ok); color: #fff; }
+.issue { padding: 1rem 1.15rem; margin-bottom: 0.9rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.issue-solved { border-left: 5px solid var(--ok); }
+.issue-head { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+.issue-del { margin-left: auto; }
+.issue-field { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.8rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.issue-field textarea { font-size: 0.95rem; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink); resize: vertical; }
+.issue-foot { display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.issue-form { display: flex; flex-direction: column; gap: 0.6rem; }
+.issue-form h3 { margin: 0; }
+.issue-site { font-size: 1rem; }
+
+.issue-toolbar { flex-wrap: wrap; gap: 0.6rem; }
+.issue-toolbar input[type='search'] { flex: 1; min-width: 220px; }
+.chip-row { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.issue-site a { color: var(--accent); }
+
+/* Menuen må ombrydes, når der er mange punkter (fx som administrator på mobil) */
+.nav { flex-wrap: wrap; }
+@media (max-width: 520px) { .nav a { padding: 0.4rem 0.55rem; } }
+
+/* ---------- Technical go-live ---------- */
+.badge-tech { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
+.kind-switch { margin-bottom: 1rem; }

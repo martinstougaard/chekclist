@@ -9,15 +9,23 @@ import ProgressBar from '../components/ProgressBar';
 import Modal from '../components/Modal';
 import SiteForm from '../components/SiteForm';
 
-function DeadlineCell({ deadline, complete }) {
-  if (!deadline) return <span className="muted">Ingen deadline</span>;
+function DeadlineCell({ deadline, complete, live, tech }) {
+  const techBadge = tech ? <span className="badge badge-tech">Teknisk live</span> : null;
+  if (live) {
+    return (
+      <span>
+        {deadline ? formatDate(deadline) : <span className="muted">Ingen deadline</span>} {techBadge} <span className="badge badge-live">Live</span>
+      </span>
+    );
+  }
+  if (!deadline) return <span>{<span className="muted">Ingen deadline</span>} {techBadge}</span>;
   const days = daysUntil(deadline);
   let badge = null;
   if (!complete && days < 0) badge = <span className="badge badge-danger">Overskredet</span>;
   else if (!complete && days <= 7) badge = <span className="badge badge-warn">{days === 0 ? 'I dag' : `${days} dg.`}</span>;
   return (
     <span>
-      {formatDate(deadline)} {badge}
+      {formatDate(deadline)} {techBadge} {badge}
     </span>
   );
 }
@@ -34,19 +42,24 @@ export default function Sites() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('deadline');
   const [hideDone, setHideDone] = useState(false);
+  const [liveSites, setLiveSites] = useState(() => new Set());
+  const [techSites, setTechSites] = useState(() => new Set());
 
   const load = useCallback(async () => {
     try {
-      const [s, st, p, x] = await Promise.all([
+      const [s, st, p, x, runs] = await Promise.all([
         api.loadSites(),
         api.loadStructure(),
         api.loadProgress(),
         api.loadAllSiteTasks(),
+        api.loadAllGoLiveRuns(),
       ]);
       setSites(s);
       setStructure(st);
       setProgress(p);
       setSiteTasks(x);
+      setLiveSites(new Set(runs.filter((r) => r.finished_at && r.kind === 'golive').map((r) => r.site_id)));
+      setTechSites(new Set(runs.filter((r) => r.finished_at && r.kind === 'technical').map((r) => r.site_id)));
     } catch (e) {
       toast.error(e);
       setSites((cur) => cur || []);
@@ -150,7 +163,7 @@ export default function Sites() {
               <span data-label="Ansvarlig">{nameOf(site.responsible_id) || <span className="muted">Ingen</span>}</span>
               <span data-label="Oprettet">{formatDate(site.created_at)}</span>
               <span data-label="Deadline">
-                <DeadlineCell deadline={site.deadline} complete={stats.total.total > 0 && stats.total.pct === 100} />
+                <DeadlineCell deadline={site.deadline} live={liveSites.has(site.id)} tech={techSites.has(site.id)} complete={stats.total.total > 0 && stats.total.pct === 100} />
               </span>
               <span className="site-progress">
                 <ProgressBar label="Samlet" stat={stats.total} tone="total" />

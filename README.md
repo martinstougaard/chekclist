@@ -5,8 +5,11 @@ Web-app til at gennemgå tjeklisten, når et nyt site bygges i WMS – både i *
 - **Forside:** alle sites med ansvarlig, oprettelsesdato, deadline og procesbarer (samlet, test og produktion).
 - **Site-side:** tjeklisten for test og produktion, afkrydsning (✓) eller "ikke relevant" (–), underopgaver, vejledning pr. opgave og kommentarer på opgaver og på hele sitet.
 - **Ekstra opgaver til ét site:** nederst på hvert site kan alle brugere tilføje opgaver, der kun gælder det site, fx noget sitet selv har bedt om. De kan gælde test, produktion eller begge, og de tæller med i procesbarerne.
+- **Technical go-live:** kører før go-live på samme måde, med egne kort, tider og kommentarer. Sitet får mærket **Teknisk live**, når den er gennemført, og go-live er låst, indtil det sker. Tiderne indgår ikke i statistikken.
 - **Go-live:** en "Go-live"-knap på hvert site åbner en side med store handlingskort, der køres igennem i rækkefølge. Start- og sluttid gemmes for hvert kort, og man kan skrive kommentarer til selve go-live'et. Siden **Go-live** i menuen viser statistik over tid.
-- **Opgaver (administratorer):** opret sektioner, opgaver og underopgaver, og sortér dem i den rækkefølge, de skal vises. Her oprettes også go-live-handlingerne (fanen *Go-live-handlinger*).
+- **Live:** når et site har gennemført go-live, står der et grønt **Live** ved deadline (på forsiden og på sitet) i stedet for "Overskredet" eller antal dage.
+- **Spørgsmål efter go-live:** på hvert site kan man registrere spørgsmål fra brugerne, løsningen og en forebyggende handling til næste go-live. Siden **Spørgsmål** i menuen samler dem fra alle sites.
+- **Opgaver (administratorer):** opret sektioner, opgaver og underopgaver, og sortér dem i den rækkefølge, de skal vises. Her oprettes også go-live-handlingerne (fanen *Go-live-handlinger*, hvor man vælger mellem *Technical go-live* og *Go-live*).
 - **Brugere (administratorer):** opret kolleger med e-mail og adgangskode (ingen mail sendes), nulstil adgangskoder og vælg, hvem der er administrator.
 
 Teknik: React + Vite, Supabase (database og login), Netlify (hosting og én funktion til brugeradministration).
@@ -73,9 +76,11 @@ Uden dette virker linket i "glemt adgangskode" ikke.
 - **Sletter du en opgave**, forsvinder dens afkrydsninger og kommentarer også.
 - **Live-opdatering:** krydser en kollega af, mens du har sitet åbent, opdateres siden af sig selv.
 
-## Go-live
+## Technical go-live og go-live
 
-**Opret handlingerne (administratorer):** Opgaver → fanen *Go-live-handlinger*. Tilføj handlingerne, sortér dem, og skriv evt. en vejledning til hver. Sæt kryds i *Sideløbende* ved en handling, der løses af en anden samtidig med den første (fx DNS og certifikat). Den kan så startes og afsluttes uafhængigt af rækkefølgen.
+To begivenheder, der virker ens: **Technical go-live** kommer altid først, og **Go-live** er låst (🔒), indtil sitet har gennemført technical go-live. Technical go-live har sin egen knap på sitet, sin egen liste af handlinger og sine egne kommentarer. Når den er gennemført, får sitet mærket **Teknisk live** på forsiden og på sitet. Tiderne fra technical go-live gemmes, men indgår ikke i statistikken. Beskrivelsen herunder gælder for begge.
+
+**Opret handlingerne (administratorer):** Opgaver → fanen *Go-live-handlinger*, og vælg først *Technical go-live* eller *Go-live*. Tilføj handlingerne, sortér dem, og skriv evt. en vejledning til hver. Sæt kryds i *Sideløbende* ved en handling, der løses af en anden samtidig med den første (fx DNS og certifikat). Den kan så startes og afsluttes uafhængigt af rækkefølgen.
 
 **Gennemfør et go-live:** åbn sitet og tryk **Go-live**. Tryk **Start go-live**, og tiden begynder at løbe:
 
@@ -93,6 +98,16 @@ Uden dette virker linket i "glemt adgangskode" ikke.
 
 Hvert go-live får sin egen kopi af handlingerne, så senere ændringer eller sletning af en handling ikke ændrer tidligere målinger. Sletter man selve sitet, forsvinder dets go-live også. Tiderne tages fra browserens ur på den computer, der trykker, så computerne bør have rigtig tid.
 
+## Spørgsmål efter go-live
+
+Efter et site er gået live kommer der ofte spørgsmål fra brugerne. Dem registrerer du på sitet under fanen **Spørgsmål efter go-live**:
+
+1. Skriv spørgsmålet og evt. hvem der spurgte, og tryk **Registrér spørgsmål**.
+2. Udfyld **Løsning** og **Forebyggende handling** (hvad vi kan gøre, så spørgsmålet ikke kommer næste gang). Felterne gemmes, når du forlader dem.
+3. Sæt kryds i *Forebyggende handling er udført*, når handlingen er gennemført, og tryk **Markér som løst**, når spørgsmålet er besvaret.
+
+Menupunktet **Spørgsmål** viser alle spørgsmål på tværs af sites med filtre: *Åbne*, *Forebyggelse mangler* (handling skrevet, men ikke udført) og *Uden forebyggende handling*. Der kan søges i teksten. Her kan man også rette og afslutte dem.
+
 ## Opdatering af en database, der allerede kører
 
 Når der kommer nye funktioner, der kræver ændringer i databasen, ligger der en fil i `supabase/migrations/`. Rækkefølgen er:
@@ -106,6 +121,8 @@ Gør det i den rækkefølge. Lægger du ny kode op, før databasen er opdateret,
 |---|---|
 | `002_ekstra_opgaver_pr_site.sql` | Tilføjer ekstra opgaver, der kun gælder ét site. |
 | `003_go_live.sql` | Tilføjer go-live: handlinger, tidsmåling og kommentarer. Kør den, hvis 002 allerede er kørt. |
+| `004_sporgsmaal_efter_go_live.sql` | Tilføjer spørgsmål efter go-live (spørgsmål, løsning og forebyggende handling). |
+| `005_technical_go_live.sql` | Gør go-live til to slags (technical go-live og go-live). Eksisterende go-live-data bevares som go-live. |
 
 En helt ny installation behøver ikke disse filer, for `schema.sql` indeholder allerede alt.
 
